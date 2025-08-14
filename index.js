@@ -125,6 +125,12 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
         if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
         
+        // **SỬA LỖI LOGIC: Thêm kiểm tra is_locked vào đây**
+        if (key.is_locked) {
+            await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint);
+            return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
+        }
+
         if (key.current_session_token && key.current_session_token === session_token) {
             await pool.query('UPDATE activation_keys SET last_heartbeat = NOW() WHERE id = $1', [key.id]);
             return res.json({ status: 'ok' });
@@ -226,7 +232,6 @@ app.post('/api/keys/:id/delete', async (req, res) => {
 app.post('/api/keys/:id/toggle-lock', async (req, res) => {
     try {
         await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked WHERE id = $1', [req.params.id]);
-        // SỬA LỖI: Luôn chuyển hướng về trang chủ để đảm bảo hoạt động
         res.redirect('/');
     } catch (err) {
         res.status(500).json({ error: 'Lỗi máy chủ' });
