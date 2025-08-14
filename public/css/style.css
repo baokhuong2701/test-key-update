@@ -72,5 +72,6 @@ tbody tr:hover { background-color: #f1f3f5; }
 .log-details { display: block; font-family: monospace; font-size: 0.9em; margin-top: 0.25rem; }
 .log-extra { display: block; font-style: italic; color: var(--info-color); margin-top: 0.25rem; font-size: 0.85em; }
 #notification-form textarea { width: 100%; min-height: 80px; margin-bottom: 1rem; }
-#notification-history p { margin-bottom: 0.5rem; }
-#notification-history span { font-size: 0.9em; color: var(--text-muted); }
+#notification-history p.notification-message { margin: 0.25rem 0; }
+#notification-history strong.active-notification { color: var(--success-color); }
+#export-textarea { width: 100%; min-height: 200px; margin-bottom: 1rem; font-family: monospace; font-size: 0.9rem; padding: 0.5rem; box-sizing: border-box; }

@@ -18,9 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const historyModal = document.getElementById('history-modal');
     const passwordModal = document.getElementById('password-modal');
     const notificationsModal = document.getElementById('notifications-modal');
+    const exportModal = document.getElementById('export-modal');
     const historyContent = document.getElementById('history-content');
     const notificationForm = document.getElementById('notification-form');
     const notificationHistoryUl = document.getElementById('notification-history');
+    const exportTextarea = document.getElementById('export-textarea');
+    const copyExportButton = document.getElementById('copy-export-button');
 
     let debounceTimer;
     let currentSort = { by: 'id', dir: 'DESC' };
@@ -177,6 +180,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = bulkActionSelect.value;
         const selectedIds = [...document.querySelectorAll('.key-checkbox:checked')].map(cb => cb.dataset.keyId);
         if (!action || selectedIds.length === 0) return alert('Vui lòng chọn hành động và ít nhất một key.');
+
+        if (action === 'export') {
+            const keysToExport = [];
+            selectedIds.forEach(id => {
+                const row = keyTableBody.querySelector(`tr[data-key-id='${id}']`);
+                if (row) {
+                    const keyText = row.cells[2].textContent;
+                    keysToExport.push(keyText);
+                }
+            });
+            exportTextarea.value = keysToExport.join('\n');
+            exportModal.style.display = 'block';
+            return;
+        }
+
         passwordModal.style.display = 'block';
         const passwordConfirmButton = document.getElementById('password-confirm-button');
         const passwordInput = document.getElementById('password-confirm-input');
@@ -207,6 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const newConfirmButton = passwordConfirmButton.cloneNode(true);
         passwordConfirmButton.parentNode.replaceChild(newConfirmButton, passwordConfirmButton);
         newConfirmButton.addEventListener('click', confirmHandler);
+    });
+
+    copyExportButton.addEventListener('click', () => {
+        exportTextarea.select();
+        document.execCommand('copy');
+        copyExportButton.textContent = 'Đã sao chép!';
+        setTimeout(() => { copyExportButton.textContent = 'Sao chép tất cả'; }, 2000);
     });
 
     const showHistoryModal = async (keyId) => {
@@ -245,8 +270,11 @@ document.addEventListener('DOMContentLoaded', () => {
             notifications.forEach(n => {
                 const li = document.createElement('li');
                 li.innerHTML = `
-                    <span>${new Date(n.created_at).toLocaleString('vi-VN')} - ${n.is_active ? '<strong>(Đang hoạt động)</strong>' : ''}</span>
-                    <p>${n.message}</p>
+                    <div>
+                        <span class="log-time">${new Date(n.created_at).toLocaleString('vi-VN')}</span>
+                        ${n.is_active ? '<strong class="active-notification">(Đang hoạt động)</strong>' : ''}
+                    </div>
+                    <p class="notification-message">${n.message}</p>
                     <button class="btn btn-action btn-delete" data-id="${n.id}">Xóa</button>
                 `;
                 notificationHistoryUl.appendChild(li);
@@ -263,14 +291,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     notificationForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const message = document.getElementById('notification-message').value;
+        const messageInput = document.getElementById('notification-message');
+        const message = messageInput.value;
+        if (!message.trim()) return alert('Nội dung thông báo không được để trống.');
         try {
             await fetch('/api/notifications', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message })
             });
-            document.getElementById('notification-message').value = '';
+            messageInput.value = '';
             loadNotificationHistory();
         } catch (error) {
             alert('Lỗi khi gửi thông báo');
@@ -285,7 +315,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     });
-
+    
     document.querySelectorAll('.modal .close-button').forEach(btn => {
         btn.addEventListener('click', () => btn.closest('.modal').style.display = 'none');
     });

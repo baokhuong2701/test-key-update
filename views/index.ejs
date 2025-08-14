@@ -66,6 +66,7 @@
             <span id="selection-count">Đã chọn: 0</span>
             <select id="bulk-action-select">
                 <option value="">-- Chọn hành động --</option>
+                <option value="export">Xuất các key đã chọn</option>
                 <option value="lock">Khóa các key đã chọn</option>
                 <option value="unlock">Mở khóa các key đã chọn</option>
                 <option value="delete">Xóa các key đã chọn</option>
@@ -124,6 +125,16 @@
             </form>
             <h3>Lịch sử thông báo</h3>
             <ul id="notification-history" class="history-list"></ul>
+        </div>
+    </div>
+
+    <div id="export-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Xuất Key Đã Chọn</h2>
+            <p>Đây là danh sách các key bạn đã chọn. Nhấn nút bên dưới để sao chép tất cả.</p>
+            <textarea id="export-textarea" readonly></textarea>
+            <button id="copy-export-button" class="btn btn-primary">Sao chép tất cả</button>
         </div>
     </div>
 
