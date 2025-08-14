@@ -46,6 +46,13 @@ const basicAuth = (req, res, next) => {
   }
 };
 
+// --- ENDPOINT CÔNG KHAI CHO UPTIMEROBOT ---
+// Endpoint này không có bảo mật, chỉ để kiểm tra xem server có "sống" không.
+app.get('/healthcheck', (req, res) => {
+    res.status(200).send('OK');
+});
+
+// --- API BẢO MẬT CAO CHO CLIENT ---
 app.post('/api/v2/activate', async (req, res) => {
     const { activation_key, fingerprint, programName } = req.body;
     const ip = req.ip;
@@ -85,7 +92,6 @@ app.post('/api/v2/activate', async (req, res) => {
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
             } 
             else {
-                // === KHỐI LOGIC SỬA LỖI QUAN TRỌNG NHẤT ===
                 const newDeviceChangeCount = key.device_change_count + 1;
                 
                 if (newDeviceChangeCount >= 6) {
@@ -103,7 +109,6 @@ app.post('/api/v2/activate', async (req, res) => {
                 );
                 await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}. Lần đổi thứ ${newDeviceChangeCount}.`);
                 return res.json({ status: 'ok', session_token: newSessionToken, message: `Kích hoạt trên thiết bị mới thành công (cảnh báo: ${newDeviceChangeCount}/5 lần đổi)` });
-                // ==========================================
             }
         } 
         else {
@@ -170,6 +175,7 @@ app.get('/logout', (req, res) => {
     res.status(401).send('Bạn đã đăng xuất. Vui lòng đóng tab này.');
 });
 
+// Áp dụng bảo mật cho TẤT CẢ các route được định nghĩa BÊN DƯỚI dòng này
 app.use('/', basicAuth);
 
 app.get('/', (req, res) => res.render('index'));
