@@ -22,8 +22,9 @@ const basicAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Vui lòng nhập mật khẩu để truy cập"');
-    return res.status(401).send('Yêu cầu xác thực');
+    // ĐÃ SỬA LỖI: Bỏ tiếng Việt có dấu
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Area"');
+    return res.status(401).send('Authentication required.');
   }
 
   const [user, pass] = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
@@ -31,8 +32,9 @@ const basicAuth = (req, res, next) => {
   if (user === process.env.ADMIN_USER && pass === process.env.ADMIN_PASS) {
     return next();
   } else {
-    res.setHeader('WWW-Authenticate', 'Basic realm="Sai mật khẩu"');
-    return res.status(401).send('Sai thông tin xác thực');
+    // ĐÃ SỬA LỖI: Bỏ tiếng Việt có dấu
+    res.setHeader('WWW-Authenticate', 'Basic realm="Invalid Credentials"');
+    return res.status(401).send('Authentication failed.');
   }
 };
 
