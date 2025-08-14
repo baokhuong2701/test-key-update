@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -10,13 +11,26 @@ app.use(express.static('public'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.set('view engine', 'ejs');
+app.set('trust proxy', true);
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-// --- MIDDLEWARE BẢO MẬT ---
+const logAction = async (keyId, action, ip, fingerprint, details = '') => {
+    try {
+        await pool.query(
+            'INSERT INTO activation_logs (key_id, action, ip_address, fingerprint, details) VALUES ($1, $2, $3, $4, $5)',
+            [keyId, action, ip, fingerprint, details]
+        );
+    } catch (dbError) {
+        console.error('Lỗi ghi log:', dbError);
+    }
+};
+
 const basicAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) {
@@ -32,56 +46,104 @@ const basicAuth = (req, res, next) => {
   }
 };
 
-// --- API XÁC THỰC KEY CHO CLIENT (Nâng cấp) ---
-app.post('/api/activate', async (req, res) => {
-    const { activation_key, machineId } = req.body;
-    if (!activation_key || !machineId) {
-        return res.status(400).json({ valid: false, message: 'Thiếu key hoặc mã máy' });
+app.post('/api/v2/activate', async (req, res) => {
+    const { activation_key, fingerprint } = req.body;
+    const ip = req.ip;
+
+    if (!activation_key || !fingerprint) {
+        return res.status(400).json({ status: 'error', message: 'Thiếu key hoặc fingerprint' });
     }
+
     try {
         const result = await pool.query('SELECT * FROM activation_keys WHERE activation_key = $1', [activation_key]);
         const key = result.rows[0];
 
-        if (!key) return res.status(404).json({ valid: false, message: 'Key không hợp lệ' });
-        if (key.is_locked) return res.status(403).json({ valid: false, message: 'Key đã bị khóa' });
-        if (key.expires_at && new Date(key.expires_at) < new Date()) {
-            return res.status(410).json({ valid: false, message: 'Key đã hết hạn' });
+        if (!key) {
+            await logAction(null, 'denied_invalid_key', ip, fingerprint, `Key: ${activation_key}`);
+            return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
-        
+
+        if (key.is_locked) {
+            await logAction(key.id, 'denied_locked', ip, fingerprint);
+            return res.status(403).json({ status: 'error', message: 'Key đã bị khóa' });
+        }
+        if (key.expires_at && new Date(key.expires_at) < new Date()) {
+            await logAction(key.id, 'denied_expired', ip, fingerprint);
+            return res.status(410).json({ status: 'error', message: 'Key đã hết hạn' });
+        }
+
+        const newSessionToken = crypto.randomBytes(32).toString('hex');
         const newActivationCount = key.activation_count + 1;
 
         if (key.is_activated) {
-            if (key.metadata && key.metadata.machineId === machineId) {
-                await pool.query('UPDATE activation_keys SET activation_count = $1 WHERE id = $2', [newActivationCount, key.id]);
-                return res.status(200).json({ valid: true, message: 'Kích hoạt lại thành công' });
-            } else {
-                return res.status(409).json({ valid: false, message: 'Key đã dùng trên máy khác' });
+            if (key.metadata && key.metadata.fingerprint === fingerprint) {
+                 await pool.query(
+                    'UPDATE activation_keys SET current_session_token = $1, last_heartbeat = NOW(), activation_count = $2 WHERE id = $3',
+                    [newSessionToken, newActivationCount, key.id]
+                );
+                await logAction(key.id, 'reactivate_same_device', ip, fingerprint);
+                return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
+            } 
+            else {
+                const oldFingerprint = (key.metadata && key.metadata.fingerprint) ? key.metadata.fingerprint : 'N/A';
+                const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata.activationDate };
+                await pool.query(
+                    'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
+                    [newMetadata, newSessionToken, newActivationCount, key.id]
+                );
+                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, `Old fingerprint: ${oldFingerprint}`);
+                return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt trên thiết bị mới thành công' });
             }
-        } else {
-            const activationMetadata = { machineId: machineId, activationDate: new Date().toISOString() };
+        } 
+        else {
+            const newMetadata = { fingerprint: fingerprint, activationDate: new Date().toISOString() };
             await pool.query(
-                'UPDATE activation_keys SET is_activated = true, metadata = $1, activation_count = $2 WHERE id = $3',
-                [activationMetadata, newActivationCount, key.id]
+                'UPDATE activation_keys SET is_activated = true, metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
+                [newMetadata, newSessionToken, newActivationCount, key.id]
             );
-            return res.status(200).json({ valid: true, message: 'Kích hoạt thành công' });
+            await logAction(key.id, 'first_activation', ip, fingerprint);
+            return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lần đầu thành công' });
         }
+
     } catch (err) {
         console.error(err.message);
-        return res.status(500).json({ error: 'Lỗi máy chủ' });
+        return res.status(500).json({ status: 'error', message: 'Lỗi máy chủ nội bộ' });
     }
 });
 
-// --- BẢO MẬT CHO TRANG QUẢN LÝ ---
+app.post('/api/v2/heartbeat', async (req, res) => {
+    const { activation_key, fingerprint, session_token } = req.body;
+    const ip = req.ip;
+
+    if (!activation_key || !fingerprint || !session_token) {
+        return res.status(400).json({ status: 'error', message: 'Yêu cầu không hợp lệ' });
+    }
+    
+    try {
+        const result = await pool.query('SELECT * FROM activation_keys WHERE activation_key = $1', [activation_key]);
+        const key = result.rows[0];
+
+        if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
+        
+        if (key.current_session_token && key.current_session_token === session_token) {
+            await pool.query('UPDATE activation_keys SET last_heartbeat = NOW() WHERE id = $1', [key.id]);
+            return res.json({ status: 'ok' });
+        } else {
+            await logAction(key.id, 'denied_kicked_out', ip, fingerprint, 'Session token không hợp lệ');
+            return res.status(409).json({ status: 'kicked_out', message: 'Phiên làm việc đã bị vô hiệu hóa bởi thiết bị khác.' });
+        }
+    } catch (err) {
+        console.error(err.message);
+        return res.status(500).json({ status: 'error', message: 'Lỗi máy chủ nội bộ' });
+    }
+});
+
 app.use('/', basicAuth);
 
-// --- CÁC ROUTE CỦA TRANG QUẢN LÝ ---
-
-// Route chính: Hiển thị trang HTML
 app.get('/', (req, res) => {
   res.render('index');
 });
 
-// API mới: Cung cấp dữ liệu key (JSON) cho frontend, hỗ trợ lọc và tìm kiếm
 app.get('/api/keys', async (req, res) => {
     const { status, search } = req.query;
     let query = 'SELECT * FROM activation_keys';
@@ -96,7 +158,7 @@ app.get('/api/keys', async (req, res) => {
     if (status) {
         switch(status) {
             case 'unused':
-                conditions.push('is_activated = false AND is_locked = false');
+                conditions.push('is_activated = false AND is_locked = false AND (expires_at IS NULL OR expires_at >= NOW())');
                 break;
             case 'used':
                 conditions.push('is_activated = true');
@@ -114,7 +176,7 @@ app.get('/api/keys', async (req, res) => {
         query += ' WHERE ' + conditions.join(' AND ');
     }
     
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY id DESC';
 
     try {
         const { rows } = await pool.query(query, params);
@@ -125,6 +187,18 @@ app.get('/api/keys', async (req, res) => {
     }
 });
 
+app.get('/api/keys/:id/logs', async (req, res) => {
+    try {
+        const { rows } = await pool.query(
+            'SELECT * FROM activation_logs WHERE key_id = $1 ORDER BY log_timestamp DESC LIMIT 50',
+            [req.params.id]
+        );
+        res.json(rows);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Lỗi khi lấy lịch sử' });
+    }
+});
 
 app.post('/api/keys', async (req, res) => {
     const count = parseInt(req.body.count) || 1;

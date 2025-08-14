@@ -1,4 +1,3 @@
-html
 <!DOCTYPE html>
 <html lang="vi">
 <head>
@@ -14,7 +13,6 @@ html
         </header>
 
         <div class="control-panel">
-            <!-- Form tạo key -->
             <div class="card">
                 <h2>Tạo Key Mới</h2>
                 <form action="/api/keys" method="POST" class="form-grid">
@@ -30,7 +28,6 @@ html
                 </form>
             </div>
 
-            <!-- Form lọc và tìm kiếm -->
             <div class="card">
                 <h2>Lọc và Tìm Kiếm</h2>
                 <div class="form-grid">
@@ -52,7 +49,6 @@ html
             </div>
         </div>
 
-        <!-- Bảng dữ liệu -->
         <div class="table-container">
             <table id="key-table">
                 <thead>
@@ -60,17 +56,24 @@ html
                         <th>ID</th>
                         <th>Key Kích Hoạt</th>
                         <th>Trạng Thái</th>
-                        <th>Thông Tin KH</th>
-                        <th>Lượt Kích Hoạt</th>
-                        <th>Ngày Hết Hạn</th>
+                        <th>Fingerprint</th>
+                        <th>Lượt</th>
+                        <th>Heartbeat Cuối</th>
                         <th>Hành Động</th>
                     </tr>
                 </thead>
                 <tbody id="key-table-body">
-                    <!-- Dữ liệu sẽ được JavaScript chèn vào đây -->
                     <tr><td colspan="7" class="loading-text">Đang tải dữ liệu...</td></tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <div id="history-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Lịch Sử Kích Hoạt</h2>
+            <div id="history-content"></div>
         </div>
     </div>
 
