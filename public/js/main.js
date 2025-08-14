@@ -43,12 +43,14 @@ document.addEventListener('DOMContentLoaded', () => {
             else if (key.is_locked) status = { text: 'Bị khóa', class: 'status-locked' };
             else if (key.is_activated) status = { text: 'Đã dùng', class: 'status-used' };
 
+            const creationDate = new Date(key.created_at).toLocaleString('vi-VN');
             const lastHeartbeat = key.last_heartbeat ? new Date(key.last_heartbeat).toLocaleString('vi-VN') : '---';
             const fingerprint = (key.metadata && key.metadata.fingerprint) ? key.metadata.fingerprint : '---';
-
+            
+            // SỬA CỘT ID THÀNH NGÀY TẠO
             const row = `
                 <tr>
-                    <td>${key.id}</td>
+                    <td>${creationDate}</td>
                     <td class="key-value">${key.activation_key}</td>
                     <td><span class="status-badge ${status.class}">${status.text}</span></td>
                     <td class="key-value" title="${fingerprint}">${fingerprint.substring(0, 15)}...</td>
@@ -118,4 +120,7 @@ document.addEventListener('DOMContentLoaded', () => {
     statusFilter.addEventListener('change', fetchData);
 
     fetchData();
+
+    // CẬP NHẬT REAL-TIME: Giảm thời gian tự động cập nhật xuống còn 5 giây
+    setInterval(fetchData, 5000);
 });

@@ -226,7 +226,8 @@ app.post('/api/keys/:id/delete', async (req, res) => {
 app.post('/api/keys/:id/toggle-lock', async (req, res) => {
     try {
         await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked WHERE id = $1', [req.params.id]);
-        res.redirect('back');
+        // SỬA LỖI: Luôn chuyển hướng về trang chủ để đảm bảo hoạt động
+        res.redirect('/');
     } catch (err) {
         res.status(500).json({ error: 'Lỗi máy chủ' });
     }
