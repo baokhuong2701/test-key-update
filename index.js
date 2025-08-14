@@ -20,11 +20,11 @@ const pool = new Pool({
   }
 });
 
-const logAction = async (keyId, action, ip, fingerprint, details = '') => {
+const logAction = async (keyId, action, ip, fingerprint, programName = 'N/A', details = '') => {
     try {
         await pool.query(
-            'INSERT INTO activation_logs (key_id, action, ip_address, fingerprint, details) VALUES ($1, $2, $3, $4, $5)',
-            [keyId, action, ip, fingerprint, details]
+            'INSERT INTO activation_logs (key_id, action, ip_address, fingerprint, program_name, details) VALUES ($1, $2, $3, $4, $5, $6)',
+            [keyId, action, ip, fingerprint, programName, details]
         );
     } catch (dbError) {
         console.error('Lỗi ghi log:', dbError);
@@ -47,7 +47,7 @@ const basicAuth = (req, res, next) => {
 };
 
 app.post('/api/v2/activate', async (req, res) => {
-    const { activation_key, fingerprint } = req.body;
+    const { activation_key, fingerprint, programName } = req.body;
     const ip = req.ip;
 
     if (!activation_key || !fingerprint) {
@@ -59,52 +59,48 @@ app.post('/api/v2/activate', async (req, res) => {
         const key = result.rows[0];
 
         if (!key) {
-            await logAction(null, 'denied_invalid_key', ip, fingerprint, `Key: ${activation_key}`);
+            await logAction(null, 'denied_invalid_key', ip, fingerprint, programName, `Key: ${activation_key}`);
             return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
 
         if (key.is_locked) {
-            await logAction(key.id, 'denied_locked', ip, fingerprint);
+            await logAction(key.id, 'denied_locked', ip, fingerprint, programName);
             return res.status(403).json({ status: 'error', message: 'Key đã bị khóa' });
         }
         if (key.expires_at && new Date(key.expires_at) < new Date()) {
-            await logAction(key.id, 'denied_expired', ip, fingerprint);
+            await logAction(key.id, 'denied_expired', ip, fingerprint, programName);
             return res.status(410).json({ status: 'error', message: 'Key đã hết hạn' });
         }
 
         const newSessionToken = crypto.randomBytes(32).toString('hex');
         const newActivationCount = key.activation_count + 1;
+        const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata?.activationDate || new Date().toISOString() };
 
         if (key.is_activated) {
-            if (key.metadata && key.metadata.fingerprint === fingerprint) {
-                 await pool.query(
+            if (key.metadata?.fingerprint === fingerprint) {
+                await pool.query(
                     'UPDATE activation_keys SET current_session_token = $1, last_heartbeat = NOW(), activation_count = $2 WHERE id = $3',
                     [newSessionToken, newActivationCount, key.id]
                 );
-                await logAction(key.id, 'reactivate_same_device', ip, fingerprint);
+                await logAction(key.id, 'reactivate_same_device', ip, fingerprint, programName);
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
-            } 
-            else {
-                const oldFingerprint = (key.metadata && key.metadata.fingerprint) ? key.metadata.fingerprint : 'N/A';
-                const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata.activationDate };
+            } else {
+                const oldFingerprint = key.metadata?.fingerprint || 'N/A';
                 await pool.query(
                     'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
                     [newMetadata, newSessionToken, newActivationCount, key.id]
                 );
-                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, `Old fingerprint: ${oldFingerprint}`);
+                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}`);
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt trên thiết bị mới thành công' });
             }
-        } 
-        else {
-            const newMetadata = { fingerprint: fingerprint, activationDate: new Date().toISOString() };
+        } else {
             await pool.query(
                 'UPDATE activation_keys SET is_activated = true, metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
                 [newMetadata, newSessionToken, newActivationCount, key.id]
             );
-            await logAction(key.id, 'first_activation', ip, fingerprint);
+            await logAction(key.id, 'first_activation', ip, fingerprint, programName);
             return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lần đầu thành công' });
         }
-
     } catch (err) {
         console.error(err.message);
         return res.status(500).json({ status: 'error', message: 'Lỗi máy chủ nội bộ' });
@@ -112,7 +108,7 @@ app.post('/api/v2/activate', async (req, res) => {
 });
 
 app.post('/api/v2/heartbeat', async (req, res) => {
-    const { activation_key, fingerprint, session_token } = req.body;
+    const { activation_key, fingerprint, session_token, programName } = req.body;
     const ip = req.ip;
 
     if (!activation_key || !fingerprint || !session_token) {
@@ -125,9 +121,8 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
         if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
         
-        // **SỬA LỖI LOGIC: Thêm kiểm tra is_locked vào đây**
         if (key.is_locked) {
-            await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint);
+            await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
             return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
         }
 
@@ -135,7 +130,7 @@ app.post('/api/v2/heartbeat', async (req, res) => {
             await pool.query('UPDATE activation_keys SET last_heartbeat = NOW() WHERE id = $1', [key.id]);
             return res.json({ status: 'ok' });
         } else {
-            await logAction(key.id, 'denied_kicked_out', ip, fingerprint, 'Session token không hợp lệ');
+            await logAction(key.id, 'denied_kicked_out', ip, fingerprint, programName, 'Session token không hợp lệ');
             return res.status(409).json({ status: 'kicked_out', message: 'Phiên làm việc đã bị vô hiệu hóa bởi thiết bị khác.' });
         }
     } catch (err) {
@@ -146,9 +141,7 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
 app.use('/', basicAuth);
 
-app.get('/', (req, res) => {
-  res.render('index');
-});
+app.get('/', (req, res) => res.render('index'));
 
 app.get('/api/keys', async (req, res) => {
     const { status, search } = req.query;
@@ -158,30 +151,17 @@ app.get('/api/keys', async (req, res) => {
 
     if (search) {
         params.push(`%${search}%`);
-        conditions.push(`activation_key ILIKE $${params.length}`);
+        conditions.push(`(activation_key ILIKE $${params.length} OR (metadata->>'fingerprint') ILIKE $${params.length})`);
     }
-
     if (status) {
         switch(status) {
-            case 'unused':
-                conditions.push('is_activated = false AND is_locked = false AND (expires_at IS NULL OR expires_at >= NOW())');
-                break;
-            case 'used':
-                conditions.push('is_activated = true');
-                break;
-            case 'locked':
-                conditions.push('is_locked = true');
-                break;
-            case 'expired':
-                conditions.push('expires_at IS NOT NULL AND expires_at < NOW()');
-                break;
+            case 'unused': conditions.push('is_activated = false AND is_locked = false AND (expires_at IS NULL OR expires_at >= NOW())'); break;
+            case 'used': conditions.push('is_activated = true'); break;
+            case 'locked': conditions.push('is_locked = true'); break;
+            case 'expired': conditions.push('expires_at IS NOT NULL AND expires_at < NOW()'); break;
         }
     }
-    
-    if (conditions.length > 0) {
-        query += ' WHERE ' + conditions.join(' AND ');
-    }
-    
+    if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
     query += ' ORDER BY id DESC';
 
     try {
@@ -195,13 +175,9 @@ app.get('/api/keys', async (req, res) => {
 
 app.get('/api/keys/:id/logs', async (req, res) => {
     try {
-        const { rows } = await pool.query(
-            'SELECT * FROM activation_logs WHERE key_id = $1 ORDER BY log_timestamp DESC LIMIT 50',
-            [req.params.id]
-        );
+        const { rows } = await pool.query('SELECT * FROM activation_logs WHERE key_id = $1 ORDER BY log_timestamp DESC LIMIT 50', [req.params.id]);
         res.json(rows);
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: 'Lỗi khi lấy lịch sử' });
     }
 });
@@ -211,33 +187,61 @@ app.post('/api/keys', async (req, res) => {
     const expires_at = req.body.expires_at || null;
     try {
         for (let i = 0; i < count; i++) {
-            const activationKey = uuidv4();
-            await pool.query('INSERT INTO activation_keys (activation_key, expires_at) VALUES ($1, $2)', [activationKey, expires_at]);
+            await pool.query('INSERT INTO activation_keys (activation_key, expires_at) VALUES ($1, $2)', [uuidv4(), expires_at]);
         }
-        res.redirect('/');
+        res.json({ success: true, message: 'Tạo key thành công' });
     } catch (err) {
-        res.status(500).json({ error: 'Lỗi máy chủ' });
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
 
 app.post('/api/keys/:id/delete', async (req, res) => {
     try {
         await pool.query('DELETE FROM activation_keys WHERE id = $1', [req.params.id]);
-        res.redirect('/');
+        res.json({ success: true });
     } catch (err) {
-        res.status(500).json({ error: 'Lỗi máy chủ' });
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
 
 app.post('/api/keys/:id/toggle-lock', async (req, res) => {
     try {
-        await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked WHERE id = $1', [req.params.id]);
-        res.redirect('/');
+        const result = await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked WHERE id = $1 RETURNING is_locked', [req.params.id]);
+        res.json({ success: true, is_locked: result.rows[0].is_locked });
     } catch (err) {
-        res.status(500).json({ error: 'Lỗi máy chủ' });
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
 
-app.listen(PORT, () => {
-  console.log(`Server đang chạy tại http://localhost:${PORT}`);
+app.post('/api/keys/bulk-action', async (req, res) => {
+    const { action, keyIds, password } = req.body;
+
+    if (password !== process.env.ADMIN_PASS) {
+        return res.status(403).json({ success: false, message: 'Sai mật khẩu xác nhận!' });
+    }
+    if (!action || !keyIds || !Array.isArray(keyIds) || keyIds.length === 0) {
+        return res.status(400).json({ success: false, message: 'Yêu cầu không hợp lệ' });
+    }
+
+    try {
+        let query;
+        if (action === 'delete') {
+            query = 'DELETE FROM activation_keys WHERE id = ANY($1::int[])';
+        } else if (action === 'lock') {
+            query = 'UPDATE activation_keys SET is_locked = true WHERE id = ANY($1::int[])';
+        } else if (action === 'unlock') {
+            query = 'UPDATE activation_keys SET is_locked = false WHERE id = ANY($1::int[])';
+        } else {
+            return res.status(400).json({ success: false, message: 'Hành động không được hỗ trợ' });
+        }
+        
+        await pool.query(query, [keyIds]);
+        res.json({ success: true, message: `Thực hiện thành công hành động ${action} trên ${keyIds.length} key.` });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Lỗi khi thực hiện hành động hàng loạt' });
+    }
 });
+
+app.listen(PORT, () => console.log(`Server đang chạy tại http://localhost:${PORT}`));

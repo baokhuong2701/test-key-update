@@ -15,7 +15,7 @@
         <div class="control-panel">
             <div class="card">
                 <h2>Tạo Key Mới</h2>
-                <form action="/api/keys" method="POST" class="form-grid">
+                <form id="create-key-form" class="form-grid">
                     <div class="form-group">
                         <label for="count">Số lượng:</label>
                         <input type="number" id="count" name="count" value="1" min="1" max="100">
@@ -42,18 +42,29 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="search-input">Tìm kiếm key:</label>
-                        <input type="search" id="search-input" placeholder="Nhập một phần của key...">
+                        <label for="search-input">Tìm kiếm (Key hoặc FP):</label>
+                        <input type="search" id="search-input" placeholder="Nhập một phần của key/fingerprint...">
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div id="bulk-action-bar" class="bulk-action-bar">
+            <span id="selection-count">Đã chọn: 0</span>
+            <select id="bulk-action-select">
+                <option value="">-- Chọn hành động --</option>
+                <option value="lock">Khóa các key đã chọn</option>
+                <option value="unlock">Mở khóa các key đã chọn</option>
+                <option value="delete">Xóa các key đã chọn</option>
+            </select>
+            <button id="bulk-action-execute" class="btn btn-danger">Thực Hiện</button>
         </div>
 
         <div class="table-container">
             <table id="key-table">
                 <thead>
                     <tr>
-                        <!-- SỬA CỘT ID THÀNH NGÀY TẠO -->
+                        <th><input type="checkbox" id="select-all-keys"></th>
                         <th>Ngày Tạo</th>
                         <th>Key Kích Hoạt</th>
                         <th>Trạng Thái</th>
@@ -64,7 +75,7 @@
                     </tr>
                 </thead>
                 <tbody id="key-table-body">
-                    <tr><td colspan="7" class="loading-text">Đang tải dữ liệu...</td></tr>
+                    <tr><td colspan="8" class="loading-text">Đang tải dữ liệu...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -75,6 +86,16 @@
             <span class="close-button">&times;</span>
             <h2>Lịch Sử Kích Hoạt</h2>
             <div id="history-content"></div>
+        </div>
+    </div>
+
+    <div id="password-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Xác Nhận Hành Động</h2>
+            <p>Vui lòng nhập mật khẩu quản trị để xác nhận hành động nguy hiểm này.</p>
+            <input type="password" id="password-confirm-input" placeholder="Nhập mật khẩu...">
+            <button id="password-confirm-button" class="btn btn-danger">Xác Nhận</button>
         </div>
     </div>
 
