@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Modals
     const historyModal = document.getElementById('history-modal');
     const passwordModal = document.getElementById('password-modal');
+    const historyContent = document.getElementById('history-content');
 
     let debounceTimer;
 
@@ -71,7 +72,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${key.activation_count}</td>
                 <td>${key.last_heartbeat ? new Date(key.last_heartbeat).toLocaleString('vi-VN') : '---'}</td>
                 <td class="actions">
-                    <button class="btn btn-action btn-history" data-key-id="${key.id}">Log</button>
+                    <button class="btn btn-action btn-history" data-action="history">Log</button>
                     <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
                     <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
                 </td>
@@ -80,7 +81,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    // --- Event Handlers ---
     createKeyForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = new FormData(createKeyForm);
@@ -118,18 +118,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 const result = await response.json();
                 if (result.success) row.remove();
             }
-        } else if (target.classList.contains('btn-history')) {
+        } else if (action === 'history') {
             showHistoryModal(keyId);
         }
     });
     
-    // Bulk Actions Logic
     const updateBulkActionBar = () => {
         const selectedCheckboxes = document.querySelectorAll('.key-checkbox:checked');
         const count = selectedCheckboxes.length;
         selectionCountSpan.textContent = `Đã chọn: ${count}`;
         bulkActionBar.style.display = count > 0 ? 'flex' : 'none';
-        selectAllCheckbox.checked = count > 0 && count === document.querySelectorAll('.key-checkbox').length;
+        const allCheckboxes = document.querySelectorAll('.key-checkbox');
+        selectAllCheckbox.checked = count > 0 && count === allCheckboxes.length;
     };
 
     selectAllCheckbox.addEventListener('change', () => {
@@ -152,8 +152,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         passwordModal.style.display = 'block';
         
+        const passwordConfirmButton = document.getElementById('password-confirm-button');
+        const passwordInput = document.getElementById('password-confirm-input');
+
         const confirmHandler = async () => {
-            const password = document.getElementById('password-confirm-input').value;
+            const password = passwordInput.value;
             if (!password) {
                 alert('Vui lòng nhập mật khẩu.');
                 return;
@@ -166,26 +169,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ action, keyIds: selectedIds, password })
                 });
                 const result = await response.json();
+                passwordModal.style.display = 'none';
+                passwordInput.value = '';
                 if (result.success) {
                     alert(result.message);
-                    passwordModal.style.display = 'none';
-                    document.getElementById('password-confirm-input').value = '';
                     fetchData();
                 } else {
                     alert(`Lỗi: ${result.message}`);
                 }
             } catch (error) {
                 alert('Lỗi khi thực hiện hành động hàng loạt.');
-            } finally {
-                // Important: Remove the event listener to prevent duplicates
-                document.getElementById('password-confirm-button').removeEventListener('click', confirmHandler);
+                passwordModal.style.display = 'none';
+                passwordInput.value = '';
             }
         };
-
-        document.getElementById('password-confirm-button').addEventListener('click', confirmHandler, { once: true });
+        
+        const newConfirmButton = passwordConfirmButton.cloneNode(true);
+        passwordConfirmButton.parentNode.replaceChild(newConfirmButton, passwordConfirmButton);
+        newConfirmButton.addEventListener('click', confirmHandler);
     });
 
-    // Modal Logic
     const showHistoryModal = async (keyId) => {
         historyContent.innerHTML = '<p>Đang tải lịch sử...</p>';
         historyModal.style.display = 'block';
@@ -222,13 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.classList.contains('modal')) e.target.style.display = 'none';
     });
 
-    // Initial Load & Filters
     searchInput.addEventListener('input', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(fetchData, 300);
     });
+
     statusFilter.addEventListener('change', fetchData);
 
     fetchData();
-    setInterval(fetchData, 10000); // Tự động cập nhật mỗi 10 giây
+    setInterval(fetchData, 10000);
 });
