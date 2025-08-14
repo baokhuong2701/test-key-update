@@ -74,8 +74,7 @@ app.post('/api/v2/activate', async (req, res) => {
 
         const newSessionToken = crypto.randomBytes(32).toString('hex');
         const newActivationCount = key.activation_count + 1;
-        const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata?.activationDate || new Date().toISOString() };
-
+        
         if (key.is_activated) {
             if (key.metadata?.fingerprint === fingerprint) {
                  await pool.query(
@@ -86,16 +85,29 @@ app.post('/api/v2/activate', async (req, res) => {
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
             } 
             else {
+                // === KHỐI LOGIC SỬA LỖI QUAN TRỌNG NHẤT ===
+                const newDeviceChangeCount = key.device_change_count + 1;
+                
+                if (newDeviceChangeCount >= 6) {
+                    const reason = `Tự động khóa do đổi thiết bị lần thứ ${newDeviceChangeCount}.`;
+                    await pool.query('UPDATE activation_keys SET is_locked = true, force_lock_reason = $1, device_change_count = $2 WHERE id = $3', [reason, newDeviceChangeCount, key.id]);
+                    await logAction(key.id, 'force_lock_too_many_devices', ip, fingerprint, programName, reason);
+                    return res.status(403).json({ status: 'error', message: 'Key đã bị khóa do đổi thiết bị quá nhiều lần. Vui lòng liên hệ quản trị viên.' });
+                }
+
                 const oldFingerprint = key.metadata?.fingerprint || 'N/A';
+                const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata.activationDate };
                 await pool.query(
-                    'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
-                    [newMetadata, newSessionToken, newActivationCount, key.id]
+                    'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3, device_change_count = $4 WHERE id = $5',
+                    [newMetadata, newSessionToken, newActivationCount, newDeviceChangeCount, key.id]
                 );
-                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}`);
-                return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt trên thiết bị mới thành công' });
+                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}. Lần đổi thứ ${newDeviceChangeCount}.`);
+                return res.json({ status: 'ok', session_token: newSessionToken, message: `Kích hoạt trên thiết bị mới thành công (cảnh báo: ${newDeviceChangeCount}/5 lần đổi)` });
+                // ==========================================
             }
         } 
         else {
+            const newMetadata = { fingerprint: fingerprint, activationDate: new Date().toISOString() };
             await pool.query(
                 'UPDATE activation_keys SET is_activated = true, metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
                 [newMetadata, newSessionToken, newActivationCount, key.id]
