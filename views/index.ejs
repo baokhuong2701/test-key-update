@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trang Quản Lý Key Kích Hoạt</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Quản Lý Key Kích Hoạt</h1>
+        
+        <form id="add-key-form">
+            <button type="submit">Tạo Key Mới</button>
+        </form>
+
+        <table id="key-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Key Kích Hoạt</th>
+                    <th>Trạng Thái</th>
+                    <th>Ngày Tạo</th>
+                    <th>Hành Động</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Dữ liệu key sẽ được chèn vào đây bởi EJS -->
+                <% keys.forEach(key => { %>
+                    <tr data-id="<%= key.id %>">
+                        <td><%= key.id %></td>
+                        <td class="key-value"><%= key.activation_key %></td>
+                        <td><%= key.is_activated ? 'Đã dùng' : 'Chưa dùng' %></td>
+                        <td><%= new Date(key.created_at).toLocaleString('vi-VN') %></td>
+                        <td>
+                            <button class="delete-btn">Xóa</button>
+                        </td>
+                    </tr>
+                <% }); %>
+            </tbody>
+        </table>
+    </div>
+
+    <script src="/js/main.js"></script>
+</body>
+</html>
