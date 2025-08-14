@@ -4,20 +4,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('filter-status');
     const createKeyForm = document.getElementById('create-key-form');
+    const tableHeaders = document.querySelectorAll('#key-table th.sortable');
+    const logoutButton = document.getElementById('logout-button');
+
     const selectAllCheckbox = document.getElementById('select-all-keys');
     const bulkActionBar = document.getElementById('bulk-action-bar');
     const selectionCountSpan = document.getElementById('selection-count');
     const bulkActionSelect = document.getElementById('bulk-action-select');
     const bulkActionExecuteBtn = document.getElementById('bulk-action-execute');
 
-    // Modals
     const historyModal = document.getElementById('history-modal');
     const passwordModal = document.getElementById('password-modal');
     const historyContent = document.getElementById('history-content');
 
     let debounceTimer;
+    let currentSort = { by: 'id', dir: 'DESC' };
 
-    // --- Data & State ---
     const logTranslations = {
         'first_activation': 'Kích hoạt lần đầu',
         'reactivate_same_device': 'Kích hoạt lại (cùng máy)',
@@ -33,8 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const params = new URLSearchParams({
             search: searchInput.value,
             status: statusFilter.value,
+            sortBy: currentSort.by,
+            sortDir: currentSort.dir
         });
-        
         try {
             const response = await fetch(`/api/keys?${params.toString()}`);
             if (!response.ok) throw new Error(`Lỗi mạng: ${response.statusText}`);
@@ -53,7 +56,6 @@ document.addEventListener('DOMContentLoaded', () => {
             keyTableBody.innerHTML = `<tr><td colspan="8" class="loading-text">Không tìm thấy key nào.</td></tr>`;
             return;
         }
-
         keys.forEach(key => {
             let status = { text: 'Chưa dùng', class: 'status-ok' };
             const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
@@ -72,12 +74,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${key.activation_count}</td>
                 <td>${key.last_heartbeat ? new Date(key.last_heartbeat).toLocaleString('vi-VN') : '---'}</td>
                 <td class="actions">
-                    <button class="btn btn-action btn-history" data-action="history">Log</button>
-                    <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
-                    <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
+                    <div class="action-buttons">
+                        <button class="btn btn-action btn-history" data-action="history">Log</button>
+                        <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
+                        <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
+                    </div>
+                    ${key.notes ? `<div class="notes" title="${key.notes}">${key.notes}</div>` : ''}
                 </td>
             `;
             keyTableBody.appendChild(row);
+        });
+        updateSortIndicators();
+    };
+    
+    const updateSortIndicators = () => {
+        tableHeaders.forEach(th => {
+            th.classList.remove('sort-asc', 'sort-desc');
+            if (th.dataset.sort === currentSort.by) {
+                th.classList.add(currentSort.dir === 'ASC' ? 'sort-asc' : 'sort-desc');
+            }
         });
     };
 
@@ -85,19 +100,35 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const formData = new FormData(createKeyForm);
         const data = Object.fromEntries(formData.entries());
-        
         try {
-            const response = await fetch('/api/keys', {
+            await fetch('/api/keys', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             });
-            if (!response.ok) throw new Error('Lỗi khi tạo key');
-            await fetchData();
+            fetchData();
             createKeyForm.reset();
-        } catch (error) {
-            alert(error.message);
-        }
+        } catch (error) { alert(error.message); }
+    });
+
+    tableHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            const sortBy = header.dataset.sort;
+            if (currentSort.by === sortBy) {
+                currentSort.dir = currentSort.dir === 'ASC' ? 'DESC' : 'ASC';
+            } else {
+                currentSort.by = sortBy;
+                currentSort.dir = 'DESC';
+            }
+            fetchData();
+        });
+    });
+
+    logoutButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        fetch('/logout').catch(() => {});
+        alert('Đã đăng xuất! Vui lòng đóng tab này. Lần truy cập tiếp theo sẽ yêu cầu đăng nhập lại.');
+        document.body.innerHTML = '<h1>Đã đăng xuất. Hãy đóng trang.</h1>';
     });
 
     keyTableBody.addEventListener('click', async (e) => {
@@ -110,19 +141,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (action === 'toggle-lock') {
             const response = await fetch(`/api/keys/${keyId}/toggle-lock`, { method: 'POST' });
-            const result = await response.json();
-            if (result.success) fetchData();
+            if (response.ok) fetchData();
         } else if (action === 'delete') {
             if (confirm(`Bạn có chắc muốn xóa key ID: ${keyId} không?`)) {
                 const response = await fetch(`/api/keys/${keyId}/delete`, { method: 'POST' });
-                const result = await response.json();
-                if (result.success) row.remove();
+                if (response.ok) row.remove();
             }
         } else if (action === 'history') {
             showHistoryModal(keyId);
         }
     });
-    
+
     const updateBulkActionBar = () => {
         const selectedCheckboxes = document.querySelectorAll('.key-checkbox:checked');
         const count = selectedCheckboxes.length;
@@ -137,31 +166,22 @@ document.addEventListener('DOMContentLoaded', () => {
         updateBulkActionBar();
     });
 
-    keyTableBody.addEventListener('change', e => {
+    keyTableBody.addEventListener('change', (e) => {
         if (e.target.classList.contains('key-checkbox')) updateBulkActionBar();
     });
 
     bulkActionExecuteBtn.addEventListener('click', () => {
         const action = bulkActionSelect.value;
         const selectedIds = [...document.querySelectorAll('.key-checkbox:checked')].map(cb => cb.dataset.keyId);
-
-        if (!action || selectedIds.length === 0) {
-            alert('Vui lòng chọn hành động và ít nhất một key.');
-            return;
-        }
+        if (!action || selectedIds.length === 0) return alert('Vui lòng chọn hành động và ít nhất một key.');
 
         passwordModal.style.display = 'block';
-        
         const passwordConfirmButton = document.getElementById('password-confirm-button');
         const passwordInput = document.getElementById('password-confirm-input');
 
         const confirmHandler = async () => {
             const password = passwordInput.value;
-            if (!password) {
-                alert('Vui lòng nhập mật khẩu.');
-                return;
-            }
-
+            if (!password) return alert('Vui lòng nhập mật khẩu.');
             try {
                 const response = await fetch('/api/keys/bulk-action', {
                     method: 'POST',
@@ -183,7 +203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 passwordInput.value = '';
             }
         };
-        
+
         const newConfirmButton = passwordConfirmButton.cloneNode(true);
         passwordConfirmButton.parentNode.replaceChild(newConfirmButton, passwordConfirmButton);
         newConfirmButton.addEventListener('click', confirmHandler);
@@ -216,12 +236,11 @@ document.addEventListener('DOMContentLoaded', () => {
             historyContent.innerHTML = '<p class="error-text">Lỗi khi tải lịch sử.</p>';
         }
     };
-    
+
     document.querySelectorAll('.modal .close-button').forEach(btn => {
         btn.addEventListener('click', () => btn.closest('.modal').style.display = 'none');
     });
-
-    window.addEventListener('click', e => {
+    window.addEventListener('click', (e) => {
         if (e.target.classList.contains('modal')) e.target.style.display = 'none';
     });
 
@@ -229,9 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(fetchData, 300);
     });
-
     statusFilter.addEventListener('change', fetchData);
 
     fetchData();
-    setInterval(fetchData, 10000);
 });

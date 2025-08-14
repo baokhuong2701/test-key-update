@@ -28,36 +28,40 @@ body {
 }
 
 .container { max-width: 1600px; margin: 0 auto; }
-header { margin-bottom: 1.5rem; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
 header h1 { color: var(--dark-color); font-weight: 700; }
 
 .control-panel { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
 .card { background-color: var(--card-bg); padding: 1.5rem; border-radius: var(--border-radius); box-shadow: var(--box-shadow); }
 .card h2 { margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem; color: var(--primary-color); border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
 
-.form-grid { display: grid; gap: 1rem; }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .form-group { display: flex; flex-direction: column; }
+.form-group.form-group-full { grid-column: 1 / -1; }
 .form-group label { margin-bottom: 0.5rem; font-weight: 500; font-size: 0.9rem; }
 
-input[type="number"], input[type="date"], input[type="search"], input[type="password"], select {
+input[type="number"], input[type="date"], input[type="search"], input[type="password"], input[type="text"], select {
     width: 100%; padding: 0.5rem 0.75rem; border: 1px solid var(--border-color); border-radius: var(--border-radius); font-size: 1rem; box-sizing: border-box; background-color: #fff;
 }
 
-.btn { padding: 0.6rem 1.2rem; border: none; border-radius: var(--border-radius); cursor: pointer; color: white; font-weight: 500; text-align: center; transition: opacity 0.2s; }
+.btn { padding: 0.6rem 1.2rem; border: none; border-radius: var(--border-radius); cursor: pointer; color: white; font-weight: 500; text-align: center; transition: background-color 0.2s, opacity 0.2s; }
 .btn:hover { opacity: 0.85; }
 .btn-primary { background-color: var(--primary-color); }
+.btn-secondary { background-color: var(--secondary-color); }
 .btn-danger { background-color: var(--danger-color); }
 
-.bulk-action-bar {
-    display: none; align-items: center; gap: 1rem; padding: 1rem; background-color: var(--light-color); border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1.5rem;
-}
+.bulk-action-bar { display: none; align-items: center; gap: 1rem; padding: 1rem; background-color: var(--light-color); border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1.5rem; }
 .bulk-action-bar span { font-weight: 500; }
 
 .table-container { background-color: var(--card-bg); border-radius: var(--border-radius); box-shadow: var(--box-shadow); overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
-thead th { background-color: var(--light-color); font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.85em; position: sticky; top: 0; }
+thead th { background-color: var(--light-color); font-weight: 700; color: var(--text-muted); text-transform: uppercase; font-size: 0.85em; position: sticky; top: 0; white-space: nowrap;}
 thead th:first-child { width: 1%; }
+th.sortable { cursor: pointer; position: relative; }
+th.sortable::after { content: ' \2195'; opacity: 0.3; position: absolute; right: 0.5rem; }
+th.sort-asc::after { content: ' \2191'; opacity: 1; }
+th.sort-desc::after { content: ' \2193'; opacity: 1; }
 tbody tr:hover { background-color: #f1f3f5; }
 .key-value { font-family: monospace; word-break: break-all; font-size: 0.9em; }
 
@@ -67,12 +71,13 @@ tbody tr:hover { background-color: #f1f3f5; }
 .status-locked { background-color: var(--warning-color); color: var(--text-color); }
 .status-expired { background-color: var(--danger-color); }
 
-.actions { display: flex; gap: 0.5rem; }
+.actions .action-buttons { display: flex; gap: 0.5rem; margin-bottom: 0.25rem; }
 .btn-action { font-size: 0.8em; padding: 0.3em 0.6em; border-radius: 4px; color: white; border: none; cursor: pointer; }
 .btn-history { background-color: #6f42c1; }
 .btn-lock { background-color: var(--warning-color); color: var(--text-color); }
 .btn-unlock { background-color: var(--info-color); }
 .btn-delete { background-color: var(--danger-color); }
+.notes { font-size: 0.8em; color: var(--text-muted); font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
 
 .loading-text, .error-text { text-align: center; padding: 2rem; color: var(--text-muted); }
 .error-text { color: var(--danger-color); }
@@ -83,7 +88,6 @@ tbody tr:hover { background-color: #f1f3f5; }
 .modal-content p { margin-bottom: 1rem; }
 .modal-content input[type="password"] { margin-bottom: 1rem; }
 .close-button { color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; line-height: 1; }
-
 .history-list { list-style-type: none; padding: 0; max-height: 400px; overflow-y: auto; }
 .history-list li { border-bottom: 1px solid var(--border-color); padding: 0.75rem 0; }
 .history-list li:last-child { border-bottom: none; }
@@ -91,100 +95,4 @@ tbody tr:hover { background-color: #f1f3f5; }
 .log-action { background-color: var(--primary-color); color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 0.5rem; }
 .log-program { font-style: italic; color: var(--text-muted); font-size: 0.9em; }
 .log-details { display: block; font-family: monospace; font-size: 0.9em; margin-top: 0.25rem; }
-.log-extra { display: block; font-style: italic; color: var(--info-color); margin-top: 0.25rem; font-size: 0.85em; }```
-
-#### **File 5: `test_client.py` (Client Python)**
-
-```python
-import requests
-import uuid
-import time
-import threading
-import os
-
-SERVER_URL = "https://key-manager-web.onrender.com"
-HEARTBEAT_INTERVAL = 15
-PROGRAM_NAME = "MyAwesomeApp_v1.2" # Tên chương trình của bạn
-
-session_token = None
-is_running = True
-
-def get_fingerprint():
-    return hex(uuid.getnode())
-
-def activate_license(activation_key, fingerprint):
-    global session_token
-    print("[*] Đang thử kích hoạt key...")
-    try:
-        payload = {
-            "activation_key": activation_key,
-            "fingerprint": fingerprint,
-            "programName": PROGRAM_NAME
-        }
-        response = requests.post(f"{SERVER_URL}/api/v2/activate", json=payload, timeout=15)
-        data = response.json()
-
-        if response.status_code == 200 and data.get('status') == 'ok':
-            session_token = data.get('session_token')
-            print(f"[✓] Kích hoạt thành công! {data.get('message')}")
-            return True
-        else:
-            print(f"[✗] Lỗi kích hoạt ({response.status_code}): {data.get('message')}")
-            return False
-    except requests.RequestException as e:
-        print(f"[!] Lỗi kết nối khi kích hoạt: {e}")
-        return False
-
-def heartbeat_thread(activation_key, fingerprint):
-    global is_running
-    while is_running:
-        time.sleep(HEARTBEAT_INTERVAL)
-        if not is_running: break
-        
-        print("\n[♥] Gửi tín hiệu heartbeat...")
-        try:
-            payload = {
-                "activation_key": activation_key,
-                "fingerprint": fingerprint,
-                "session_token": session_token,
-                "programName": PROGRAM_NAME
-            }
-            response = requests.post(f"{SERVER_URL}/api/v2/heartbeat", json=payload, timeout=10)
-            
-            if response.status_code == 200:
-                print("[♥] Heartbeat OK. Chương trình tiếp tục chạy.")
-            else:
-                data = response.json()
-                print(f"\n[!!!] MẤT BẢN QUYỀN: {data.get('message')}")
-                print("[!!!] Chương trình sẽ tự động thoát.")
-                is_running = False
-                break
-        except requests.RequestException:
-            print("[!] Mất kết nối tới server. Sẽ thử lại sau...")
-
-def main():
-    global is_running
-    os.system('cls' if os.name == 'nt' else 'clear')
-    print("--- CLIENT KIỂM TRA BẢO MẬT HEARTBEAT ---")
-    fingerprint = get_fingerprint()
-    print(f"[*] Fingerprint thiết bị: {fingerprint}")
-    
-    key = input("[?] Nhập key kích hoạt: ").strip()
-    
-    if activate_license(key, fingerprint):
-        hb_thread = threading.Thread(target=heartbeat_thread, args=(key, fingerprint), daemon=True)
-        hb_thread.start()
-
-        print("\n--- Chương trình chính đang chạy. Nhấn Ctrl+C để thoát. ---")
-        try:
-            while is_running:
-                print(".", end='', flush=True)
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nĐã nhận lệnh thoát từ người dùng.")
-            is_running = False
-            
-    print("\n--- Chương trình đã kết thúc. ---")
-
-if __name__ == "__main__":
-    main()
+.log-extra { display: block; font-style: italic; color: var(--info-color); margin-top: 0.25rem; font-size: 0.85em; }

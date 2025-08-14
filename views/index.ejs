@@ -10,6 +10,7 @@
     <div class="container">
         <header>
             <h1>Bảng Điều Khiển Key</h1>
+            <a href="/logout" id="logout-button" class="btn btn-secondary">Đăng xuất</a>
         </header>
 
         <div class="control-panel">
@@ -24,7 +25,11 @@
                         <label for="expires_at">Ngày hết hạn:</label>
                         <input type="date" id="expires_at" name="expires_at" title="Để trống là vĩnh viễn">
                     </div>
-                    <button type="submit" class="btn btn-primary">Tạo</button>
+                    <div class="form-group form-group-full">
+                        <label for="notes">Ghi chú (tùy chọn):</label>
+                        <input type="text" id="notes" name="notes" placeholder="VD: Key cho sự kiện X, tặng khách hàng Y...">
+                    </div>
+                    <button type="submit" class="btn btn-primary form-group-full">Tạo Key</button>
                 </form>
             </div>
 
@@ -42,8 +47,8 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="search-input">Tìm kiếm (Key hoặc FP):</label>
-                        <input type="search" id="search-input" placeholder="Nhập một phần của key/fingerprint...">
+                        <label for="search-input">Tìm kiếm (Key, FP, Ghi chú):</label>
+                        <input type="search" id="search-input" placeholder="Nhập từ khóa...">
                     </div>
                 </div>
             </div>
@@ -65,13 +70,13 @@
                 <thead>
                     <tr>
                         <th><input type="checkbox" id="select-all-keys"></th>
-                        <th>Ngày Tạo</th>
-                        <th>Key Kích Hoạt</th>
-                        <th>Trạng Thái</th>
+                        <th class="sortable" data-sort="created_at">Ngày Tạo</th>
+                        <th class="sortable" data-sort="activation_key">Key Kích Hoạt</th>
+                        <th class="sortable" data-sort="is_activated">Trạng Thái</th>
                         <th>Fingerprint</th>
-                        <th>Lượt</th>
-                        <th>Heartbeat Cuối</th>
-                        <th>Hành Động</th>
+                        <th class="sortable" data-sort="activation_count">Lượt</th>
+                        <th class="sortable" data-sort="last_heartbeat">Heartbeat Cuối</th>
+                        <th>Hành Động & Ghi chú</th>
                     </tr>
                 </thead>
                 <tbody id="key-table-body">

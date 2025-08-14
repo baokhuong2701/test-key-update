@@ -78,13 +78,14 @@ app.post('/api/v2/activate', async (req, res) => {
 
         if (key.is_activated) {
             if (key.metadata?.fingerprint === fingerprint) {
-                await pool.query(
+                 await pool.query(
                     'UPDATE activation_keys SET current_session_token = $1, last_heartbeat = NOW(), activation_count = $2 WHERE id = $3',
                     [newSessionToken, newActivationCount, key.id]
                 );
                 await logAction(key.id, 'reactivate_same_device', ip, fingerprint, programName);
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
-            } else {
+            } 
+            else {
                 const oldFingerprint = key.metadata?.fingerprint || 'N/A';
                 await pool.query(
                     'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
@@ -93,7 +94,8 @@ app.post('/api/v2/activate', async (req, res) => {
                 await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}`);
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt trên thiết bị mới thành công' });
             }
-        } else {
+        } 
+        else {
             await pool.query(
                 'UPDATE activation_keys SET is_activated = true, metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
                 [newMetadata, newSessionToken, newActivationCount, key.id]
@@ -139,19 +141,28 @@ app.post('/api/v2/heartbeat', async (req, res) => {
     }
 });
 
+app.get('/logout', (req, res) => {
+    res.status(401).send('Bạn đã đăng xuất. Vui lòng đóng tab này.');
+});
+
 app.use('/', basicAuth);
 
 app.get('/', (req, res) => res.render('index'));
 
 app.get('/api/keys', async (req, res) => {
-    const { status, search } = req.query;
+    const { status, search, sortBy, sortDir } = req.query;
+    
+    const validSortColumns = ['id', 'created_at', 'activation_key', 'is_activated', 'is_locked', 'expires_at', 'activation_count', 'last_heartbeat'];
+    const safeSortBy = validSortColumns.includes(sortBy) ? sortBy : 'id';
+    const safeSortDir = ['ASC', 'DESC'].includes(sortDir?.toUpperCase()) ? sortDir.toUpperCase() : 'DESC';
+
     let query = 'SELECT * FROM activation_keys';
     const conditions = [];
     const params = [];
 
     if (search) {
         params.push(`%${search}%`);
-        conditions.push(`(activation_key ILIKE $${params.length} OR (metadata->>'fingerprint') ILIKE $${params.length})`);
+        conditions.push(`(activation_key ILIKE $${params.length} OR (metadata->>'fingerprint') ILIKE $${params.length} OR notes ILIKE $${params.length})`);
     }
     if (status) {
         switch(status) {
@@ -162,7 +173,7 @@ app.get('/api/keys', async (req, res) => {
         }
     }
     if (conditions.length > 0) query += ' WHERE ' + conditions.join(' AND ');
-    query += ' ORDER BY id DESC';
+    query += ` ORDER BY ${safeSortBy} ${safeSortDir}, id DESC`;
 
     try {
         const { rows } = await pool.query(query, params);
@@ -185,9 +196,10 @@ app.get('/api/keys/:id/logs', async (req, res) => {
 app.post('/api/keys', async (req, res) => {
     const count = parseInt(req.body.count) || 1;
     const expires_at = req.body.expires_at || null;
+    const notes = req.body.notes || null;
     try {
         for (let i = 0; i < count; i++) {
-            await pool.query('INSERT INTO activation_keys (activation_key, expires_at) VALUES ($1, $2)', [uuidv4(), expires_at]);
+            await pool.query('INSERT INTO activation_keys (activation_key, expires_at, notes) VALUES ($1, $2, $3)', [uuidv4(), expires_at, notes]);
         }
         res.json({ success: true, message: 'Tạo key thành công' });
     } catch (err) {
