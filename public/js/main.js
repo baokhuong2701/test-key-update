@@ -3,9 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const keyTableBody = document.getElementById('key-table-body');
     const searchInput = document.getElementById('search-input');
     const statusFilter = document.getElementById('filter-status');
+    const filterNotesInput = document.getElementById('filter-notes');
     const createKeyForm = document.getElementById('create-key-form');
     const tableHeaders = document.querySelectorAll('#key-table th.sortable');
     const logoutButton = document.getElementById('logout-button');
+    const manageNotificationsBtn = document.getElementById('manage-notifications-btn');
 
     const selectAllCheckbox = document.getElementById('select-all-keys');
     const bulkActionBar = document.getElementById('bulk-action-bar');
@@ -15,26 +17,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const historyModal = document.getElementById('history-modal');
     const passwordModal = document.getElementById('password-modal');
+    const notificationsModal = document.getElementById('notifications-modal');
     const historyContent = document.getElementById('history-content');
+    const notificationForm = document.getElementById('notification-form');
+    const notificationHistoryUl = document.getElementById('notification-history');
 
     let debounceTimer;
     let currentSort = { by: 'id', dir: 'DESC' };
 
     const logTranslations = {
-        'first_activation': 'Kích hoạt lần đầu',
-        'reactivate_same_device': 'Kích hoạt lại (cùng máy)',
-        'new_device_kick_old': 'Kích hoạt máy mới (đá máy cũ)',
-        'denied_invalid_key': 'Từ chối: Key không hợp lệ',
-        'denied_locked': 'Từ chối: Key đã bị khóa',
-        'denied_expired': 'Từ chối: Key đã hết hạn',
-        'denied_kicked_out': 'Từ chối: Bị đá khỏi phiên',
-        'denied_locked_on_heartbeat': 'Từ chối: Key bị khóa từ xa'
+        'first_activation': 'Kích hoạt lần đầu', 'reactivate_same_device': 'Kích hoạt lại (cùng máy)',
+        'new_device_kick_old': 'Kích hoạt máy mới (đá máy cũ)', 'denied_invalid_key': 'Từ chối: Key không hợp lệ',
+        'denied_locked': 'Từ chối: Key đã bị khóa', 'denied_expired': 'Từ chối: Key đã hết hạn',
+        'denied_kicked_out': 'Từ chối: Bị đá khỏi phiên', 'denied_locked_on_heartbeat': 'Từ chối: Key bị khóa từ xa',
+        'force_lock_too_many_devices': 'Cưỡng chế khóa: Đổi máy quá nhiều'
     };
 
     const fetchData = async () => {
         const params = new URLSearchParams({
             search: searchInput.value,
             status: statusFilter.value,
+            notes: filterNotesInput.value,
             sortBy: currentSort.by,
             sortDir: currentSort.dir
         });
@@ -46,20 +49,21 @@ document.addEventListener('DOMContentLoaded', () => {
             updateBulkActionBar();
         } catch (error) {
             console.error('Lỗi tải dữ liệu:', error);
-            keyTableBody.innerHTML = `<tr><td colspan="8" class="error-text">Không thể tải dữ liệu.</td></tr>`;
+            keyTableBody.innerHTML = `<tr><td colspan="9" class="error-text">Không thể tải dữ liệu.</td></tr>`;
         }
     };
 
     const renderTable = (keys) => {
         keyTableBody.innerHTML = '';
         if (!keys || keys.length === 0) {
-            keyTableBody.innerHTML = `<tr><td colspan="8" class="loading-text">Không tìm thấy key nào.</td></tr>`;
+            keyTableBody.innerHTML = `<tr><td colspan="9" class="loading-text">Không tìm thấy key nào.</td></tr>`;
             return;
         }
         keys.forEach(key => {
             let status = { text: 'Chưa dùng', class: 'status-ok' };
             const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
-            if (isExpired) status = { text: 'Hết hạn', class: 'status-expired' };
+            if (key.force_lock_reason) status = { text: 'Bị Cưỡng Chế', class: 'status-forced' };
+            else if (isExpired) status = { text: 'Hết hạn', class: 'status-expired' };
             else if (key.is_locked) status = { text: 'Bị khóa', class: 'status-locked' };
             else if (key.is_activated) status = { text: 'Đã dùng', class: 'status-used' };
 
@@ -69,17 +73,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td><input type="checkbox" class="key-checkbox" data-key-id="${key.id}"></td>
                 <td>${new Date(key.created_at).toLocaleString('vi-VN')}</td>
                 <td class="key-value">${key.activation_key}</td>
-                <td><span class="status-badge ${status.class}">${status.text}</span></td>
-                <td class="key-value" title="${key.metadata?.fingerprint || ''}">${(key.metadata?.fingerprint || '---').substring(0, 15)}</td>
+                <td><span class="status-badge ${status.class}" title="${key.force_lock_reason || ''}">${status.text}</span></td>
+                <td class="notes" title="${key.notes || ''}">${key.notes || '---'}</td>
+                <td class="key-value" title="${key.metadata?.fingerprint || ''}">
+                    ${(key.metadata?.fingerprint || '---').substring(0, 15)}
+                    <span class="device-change-count">(${key.device_change_count}/5)</span>
+                </td>
                 <td>${key.activation_count}</td>
                 <td>${key.last_heartbeat ? new Date(key.last_heartbeat).toLocaleString('vi-VN') : '---'}</td>
                 <td class="actions">
-                    <div class="action-buttons">
-                        <button class="btn btn-action btn-history" data-action="history">Log</button>
-                        <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
-                        <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
-                    </div>
-                    ${key.notes ? `<div class="notes" title="${key.notes}">${key.notes}</div>` : ''}
+                    <button class="btn btn-action btn-history" data-action="history">Log</button>
+                    <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
+                    <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
                 </td>
             `;
             keyTableBody.appendChild(row);
@@ -134,11 +139,9 @@ document.addEventListener('DOMContentLoaded', () => {
     keyTableBody.addEventListener('click', async (e) => {
         const target = e.target;
         if (target.tagName !== 'BUTTON') return;
-
         const row = target.closest('tr');
         const keyId = row.dataset.keyId;
         const action = target.dataset.action;
-
         if (action === 'toggle-lock') {
             const response = await fetch(`/api/keys/${keyId}/toggle-lock`, { method: 'POST' });
             if (response.ok) fetchData();
@@ -158,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         selectionCountSpan.textContent = `Đã chọn: ${count}`;
         bulkActionBar.style.display = count > 0 ? 'flex' : 'none';
         const allCheckboxes = document.querySelectorAll('.key-checkbox');
-        selectAllCheckbox.checked = count > 0 && count === allCheckboxes.length;
+        selectAllCheckbox.checked = count > 0 && allCheckboxes.length > 0 && count === allCheckboxes.length;
     };
 
     selectAllCheckbox.addEventListener('change', () => {
@@ -174,11 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const action = bulkActionSelect.value;
         const selectedIds = [...document.querySelectorAll('.key-checkbox:checked')].map(cb => cb.dataset.keyId);
         if (!action || selectedIds.length === 0) return alert('Vui lòng chọn hành động và ít nhất một key.');
-
         passwordModal.style.display = 'block';
         const passwordConfirmButton = document.getElementById('password-confirm-button');
         const passwordInput = document.getElementById('password-confirm-input');
-
         const confirmHandler = async () => {
             const password = passwordInput.value;
             if (!password) return alert('Vui lòng nhập mật khẩu.');
@@ -203,7 +204,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 passwordInput.value = '';
             }
         };
-
         const newConfirmButton = passwordConfirmButton.cloneNode(true);
         passwordConfirmButton.parentNode.replaceChild(newConfirmButton, passwordConfirmButton);
         newConfirmButton.addEventListener('click', confirmHandler);
@@ -237,6 +237,55 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    const loadNotificationHistory = async () => {
+        try {
+            const response = await fetch('/api/notifications');
+            const notifications = await response.json();
+            notificationHistoryUl.innerHTML = '';
+            notifications.forEach(n => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>${new Date(n.created_at).toLocaleString('vi-VN')} - ${n.is_active ? '<strong>(Đang hoạt động)</strong>' : ''}</span>
+                    <p>${n.message}</p>
+                    <button class="btn btn-action btn-delete" data-id="${n.id}">Xóa</button>
+                `;
+                notificationHistoryUl.appendChild(li);
+            });
+        } catch (error) {
+            notificationHistoryUl.innerHTML = '<li>Lỗi khi tải lịch sử thông báo.</li>';
+        }
+    };
+
+    manageNotificationsBtn.addEventListener('click', () => {
+        notificationsModal.style.display = 'block';
+        loadNotificationHistory();
+    });
+
+    notificationForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const message = document.getElementById('notification-message').value;
+        try {
+            await fetch('/api/notifications', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+            document.getElementById('notification-message').value = '';
+            loadNotificationHistory();
+        } catch (error) {
+            alert('Lỗi khi gửi thông báo');
+        }
+    });
+
+    notificationHistoryUl.addEventListener('click', async (e) => {
+        if (e.target.tagName === 'BUTTON' && e.target.dataset.id) {
+            if (confirm('Bạn có chắc muốn xóa thông báo này?')) {
+                await fetch(`/api/notifications/${e.target.dataset.id}/delete`, { method: 'POST' });
+                loadNotificationHistory();
+            }
+        }
+    });
+
     document.querySelectorAll('.modal .close-button').forEach(btn => {
         btn.addEventListener('click', () => btn.closest('.modal').style.display = 'none');
     });
@@ -244,10 +293,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (e.target.classList.contains('modal')) e.target.style.display = 'none';
     });
 
-    searchInput.addEventListener('input', () => {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(fetchData, 300);
-    });
+    searchInput.addEventListener('input', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchData, 300); });
+    filterNotesInput.addEventListener('input', () => { clearTimeout(debounceTimer); debounceTimer = setTimeout(fetchData, 300); });
     statusFilter.addEventListener('change', fetchData);
 
     fetchData();

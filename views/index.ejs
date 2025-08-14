@@ -10,7 +10,10 @@
     <div class="container">
         <header>
             <h1>Bảng Điều Khiển Key</h1>
-            <a href="/logout" id="logout-button" class="btn btn-secondary">Đăng xuất</a>
+            <div>
+                <button id="manage-notifications-btn" class="btn btn-info">Quản lý Thông báo</button>
+                <a href="/logout" id="logout-button" class="btn btn-secondary">Đăng xuất</a>
+            </div>
         </header>
 
         <div class="control-panel">
@@ -42,13 +45,18 @@
                             <option value="">Tất cả</option>
                             <option value="unused">Chưa dùng</option>
                             <option value="used">Đã dùng</option>
-                            <option value="locked">Bị khóa</option>
+                            <option value="locked">Bị khóa (thủ công)</option>
+                            <option value="forced">Bị cưỡng chế</option>
                             <option value="expired">Hết hạn</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="search-input">Tìm kiếm (Key, FP, Ghi chú):</label>
+                        <label for="search-input">Tìm kiếm (Key/FP):</label>
                         <input type="search" id="search-input" placeholder="Nhập từ khóa...">
+                    </div>
+                     <div class="form-group form-group-full">
+                        <label for="filter-notes">Lọc theo Ghi chú:</label>
+                        <input type="search" id="filter-notes" placeholder="Nhập nội dung ghi chú...">
                     </div>
                 </div>
             </div>
@@ -73,14 +81,15 @@
                         <th class="sortable" data-sort="created_at">Ngày Tạo</th>
                         <th class="sortable" data-sort="activation_key">Key Kích Hoạt</th>
                         <th class="sortable" data-sort="is_activated">Trạng Thái</th>
-                        <th>Fingerprint</th>
+                        <th class="sortable" data-sort="notes">Ghi Chú</th>
+                        <th class="sortable" data-sort="device_change_count">FP & Lần Đổi</th>
                         <th class="sortable" data-sort="activation_count">Lượt</th>
                         <th class="sortable" data-sort="last_heartbeat">Heartbeat Cuối</th>
-                        <th>Hành Động & Ghi chú</th>
+                        <th>Hành Động</th>
                     </tr>
                 </thead>
                 <tbody id="key-table-body">
-                    <tr><td colspan="8" class="loading-text">Đang tải dữ liệu...</td></tr>
+                    <tr><td colspan="9" class="loading-text">Đang tải dữ liệu...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -101,6 +110,20 @@
             <p>Vui lòng nhập mật khẩu quản trị để xác nhận hành động nguy hiểm này.</p>
             <input type="password" id="password-confirm-input" placeholder="Nhập mật khẩu...">
             <button id="password-confirm-button" class="btn btn-danger">Xác Nhận</button>
+        </div>
+    </div>
+
+    <div id="notifications-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h2>Quản lý Thông báo</h2>
+            <p>Gửi một thông báo đến tất cả client đang hoạt động. Chỉ thông báo mới nhất được kích hoạt.</p>
+            <form id="notification-form">
+                <textarea id="notification-message" placeholder="Nhập nội dung thông báo..."></textarea>
+                <button type="submit" class="btn btn-primary">Gửi Thông Báo Mới</button>
+            </form>
+            <h3>Lịch sử thông báo</h3>
+            <ul id="notification-history" class="history-list"></ul>
         </div>
     </div>
 

@@ -74,28 +74,36 @@ app.post('/api/v2/activate', async (req, res) => {
 
         const newSessionToken = crypto.randomBytes(32).toString('hex');
         const newActivationCount = key.activation_count + 1;
-        const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata?.activationDate || new Date().toISOString() };
-
+        
         if (key.is_activated) {
             if (key.metadata?.fingerprint === fingerprint) {
-                 await pool.query(
+                await pool.query(
                     'UPDATE activation_keys SET current_session_token = $1, last_heartbeat = NOW(), activation_count = $2 WHERE id = $3',
                     [newSessionToken, newActivationCount, key.id]
                 );
                 await logAction(key.id, 'reactivate_same_device', ip, fingerprint, programName);
                 return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
-            } 
-            else {
+            } else {
+                const newDeviceChangeCount = key.device_change_count + 1;
+                
+                if (newDeviceChangeCount >= 6) {
+                    const reason = `Tự động khóa do đổi thiết bị lần thứ ${newDeviceChangeCount}.`;
+                    await pool.query('UPDATE activation_keys SET is_locked = true, force_lock_reason = $1 WHERE id = $2', [reason, key.id]);
+                    await logAction(key.id, 'force_lock_too_many_devices', ip, fingerprint, programName, reason);
+                    return res.status(403).json({ status: 'error', message: 'Key đã bị khóa do đổi thiết bị quá nhiều lần. Vui lòng liên hệ quản trị viên.' });
+                }
+
                 const oldFingerprint = key.metadata?.fingerprint || 'N/A';
+                const newMetadata = { fingerprint: fingerprint, activationDate: key.metadata.activationDate };
                 await pool.query(
-                    'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
-                    [newMetadata, newSessionToken, newActivationCount, key.id]
+                    'UPDATE activation_keys SET metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3, device_change_count = $4 WHERE id = $5',
+                    [newMetadata, newSessionToken, newActivationCount, newDeviceChangeCount, key.id]
                 );
-                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}`);
-                return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt trên thiết bị mới thành công' });
+                await logAction(key.id, 'new_device_kick_old', ip, fingerprint, programName, `FP Cũ: ${oldFingerprint}. Lần đổi thứ ${newDeviceChangeCount}.`);
+                return res.json({ status: 'ok', session_token: newSessionToken, message: `Kích hoạt trên thiết bị mới thành công (cảnh báo: ${newDeviceChangeCount}/5 lần đổi)` });
             }
-        } 
-        else {
+        } else {
+            const newMetadata = { fingerprint: fingerprint, activationDate: new Date().toISOString() };
             await pool.query(
                 'UPDATE activation_keys SET is_activated = true, metadata = $1, current_session_token = $2, last_heartbeat = NOW(), activation_count = $3 WHERE id = $4',
                 [newMetadata, newSessionToken, newActivationCount, key.id]
@@ -141,6 +149,19 @@ app.post('/api/v2/heartbeat', async (req, res) => {
     }
 });
 
+app.get('/api/v2/check-updates', async (req, res) => {
+    try {
+        const { rows } = await pool.query("SELECT message FROM notifications WHERE is_active = true ORDER BY created_at DESC LIMIT 1");
+        if (rows.length > 0) {
+            res.json({ notification: rows[0].message });
+        } else {
+            res.json({ notification: null });
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Lỗi máy chủ' });
+    }
+});
+
 app.get('/logout', (req, res) => {
     res.status(401).send('Bạn đã đăng xuất. Vui lòng đóng tab này.');
 });
@@ -150,9 +171,9 @@ app.use('/', basicAuth);
 app.get('/', (req, res) => res.render('index'));
 
 app.get('/api/keys', async (req, res) => {
-    const { status, search, sortBy, sortDir } = req.query;
+    const { status, search, notes, sortBy, sortDir } = req.query;
     
-    const validSortColumns = ['id', 'created_at', 'activation_key', 'is_activated', 'is_locked', 'expires_at', 'activation_count', 'last_heartbeat'];
+    const validSortColumns = ['id', 'created_at', 'activation_key', 'is_activated', 'is_locked', 'expires_at', 'activation_count', 'last_heartbeat', 'notes', 'device_change_count'];
     const safeSortBy = validSortColumns.includes(sortBy) ? sortBy : 'id';
     const safeSortDir = ['ASC', 'DESC'].includes(sortDir?.toUpperCase()) ? sortDir.toUpperCase() : 'DESC';
 
@@ -162,13 +183,18 @@ app.get('/api/keys', async (req, res) => {
 
     if (search) {
         params.push(`%${search}%`);
-        conditions.push(`(activation_key ILIKE $${params.length} OR (metadata->>'fingerprint') ILIKE $${params.length} OR notes ILIKE $${params.length})`);
+        conditions.push(`(activation_key ILIKE $${params.length} OR (metadata->>'fingerprint') ILIKE $${params.length})`);
+    }
+    if (notes) {
+        params.push(`%${notes}%`);
+        conditions.push(`notes ILIKE $${params.length}`);
     }
     if (status) {
         switch(status) {
             case 'unused': conditions.push('is_activated = false AND is_locked = false AND (expires_at IS NULL OR expires_at >= NOW())'); break;
             case 'used': conditions.push('is_activated = true'); break;
-            case 'locked': conditions.push('is_locked = true'); break;
+            case 'locked': conditions.push('is_locked = true AND force_lock_reason IS NULL'); break;
+            case 'forced': conditions.push('is_locked = true AND force_lock_reason IS NOT NULL'); break;
             case 'expired': conditions.push('expires_at IS NOT NULL AND expires_at < NOW()'); break;
         }
     }
@@ -182,6 +208,24 @@ app.get('/api/keys', async (req, res) => {
         console.error(err.message);
         res.status(500).json({ error: 'Lỗi khi truy vấn dữ liệu' });
     }
+});
+
+app.get('/api/notifications', async (req, res) => {
+    const { rows } = await pool.query('SELECT * FROM notifications ORDER BY created_at DESC');
+    res.json(rows);
+});
+
+app.post('/api/notifications', async (req, res) => {
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ success: false, message: 'Nội dung không được để trống' });
+    await pool.query('UPDATE notifications SET is_active = false');
+    await pool.query('INSERT INTO notifications (message, is_active) VALUES ($1, true)', [message]);
+    res.json({ success: true });
+});
+
+app.post('/api/notifications/:id/delete', async (req, res) => {
+    await pool.query('DELETE FROM notifications WHERE id = $1', [req.params.id]);
+    res.json({ success: true });
 });
 
 app.get('/api/keys/:id/logs', async (req, res) => {
@@ -218,7 +262,7 @@ app.post('/api/keys/:id/delete', async (req, res) => {
 
 app.post('/api/keys/:id/toggle-lock', async (req, res) => {
     try {
-        const result = await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked WHERE id = $1 RETURNING is_locked', [req.params.id]);
+        const result = await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked, force_lock_reason = NULL WHERE id = $1 RETURNING is_locked', [req.params.id]);
         res.json({ success: true, is_locked: result.rows[0].is_locked });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
@@ -242,14 +286,13 @@ app.post('/api/keys/bulk-action', async (req, res) => {
         } else if (action === 'lock') {
             query = 'UPDATE activation_keys SET is_locked = true WHERE id = ANY($1::int[])';
         } else if (action === 'unlock') {
-            query = 'UPDATE activation_keys SET is_locked = false WHERE id = ANY($1::int[])';
+            query = 'UPDATE activation_keys SET is_locked = false, force_lock_reason = NULL WHERE id = ANY($1::int[])';
         } else {
             return res.status(400).json({ success: false, message: 'Hành động không được hỗ trợ' });
         }
         
         await pool.query(query, [keyIds]);
         res.json({ success: true, message: `Thực hiện thành công hành động ${action} trên ${keyIds.length} key.` });
-
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: 'Lỗi khi thực hiện hành động hàng loạt' });
