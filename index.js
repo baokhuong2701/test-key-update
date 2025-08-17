@@ -142,7 +142,7 @@ app.post('/api/v2/heartbeat', async (req, res) => {
         
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
-            return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
+            return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa, LH Telegram @baokhuongmedia.' });
         }
 
         if (key.current_session_token && key.current_session_token === session_token) {
