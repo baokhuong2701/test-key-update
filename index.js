@@ -89,7 +89,7 @@ app.post('/api/v2/activate', async (req, res) => {
                     [newSessionToken, newActivationCount, key.id]
                 );
                 await logAction(key.id, 'reactivate_same_device', ip, fingerprint, programName);
-                return res.json({ status: 'ok', session_token: newSessionToken, message: `Kích hoạt lại thành công (cảnh báo: ${key.device_change_count}/5 lần đổi)` });
+                return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lại thành công' });
             } 
             else {
                 const newDeviceChangeCount = key.device_change_count + 1;
@@ -118,7 +118,7 @@ app.post('/api/v2/activate', async (req, res) => {
                 [newMetadata, newSessionToken, newActivationCount, key.id]
             );
             await logAction(key.id, 'first_activation', ip, fingerprint, programName);
-            return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lần đầu thành công (cảnh báo: 1/5 lần đổi)' });
+            return res.json({ status: 'ok', session_token: newSessionToken, message: 'Kích hoạt lần đầu thành công' });
         }
     } catch (err) {
         console.error(err.message);
