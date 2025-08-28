@@ -69,6 +69,17 @@ app.post('/api/v2/activate', async (req, res) => {
             await logAction(null, 'denied_invalid_key', ip, fingerprint, programName, `Key: ${activation_key}`);
             return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
+        
+        // ▼▼▼ THAY ĐỔI BẮT ĐẦU TẠI ĐÂY ▼▼▼
+        // Xử lý đặc biệt cho key dùng thử
+        if (key.is_trial_key) {
+            const trialSessionToken = crypto.randomBytes(32).toString('hex');
+            // Ghi log rằng có một lượt kích hoạt dùng thử, nhưng không thay đổi trạng thái của key
+            await logAction(key.id, 'trial_activation', ip, fingerprint, programName, 'Trial key used');
+            // Luôn trả về thành công cho key dùng thử
+            return res.json({ status: 'ok', session_token: trialSessionToken, message: 'Chào mừng bạn đến với phiên bản dùng thử!' });
+        }
+        // ▲▲▲ THAY ĐỔI KẾT THÚC TẠI ĐÂY ▲▲▲
 
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked', ip, fingerprint, programName);
@@ -142,7 +153,7 @@ app.post('/api/v2/heartbeat', async (req, res) => {
         
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
-            return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa, LH Telegram @baokhuongmedia.' });
+            return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
         }
 
         if (key.current_session_token && key.current_session_token === session_token) {
@@ -248,18 +259,28 @@ app.get('/api/keys/:id/logs', async (req, res) => {
 });
 
 app.post('/api/keys', async (req, res) => {
+    // ▼▼▼ THAY ĐỔI BẮT ĐẦU TẠI ĐÂY ▼▼▼
     const count = parseInt(req.body.count) || 1;
     const expires_at = req.body.expires_at || null;
     const notes = req.body.notes || null;
+    // Checkbox gửi về giá trị 'on' khi được tick, ngược lại thì là 'undefined'
+    const is_trial_key = req.body.is_trial_key === 'on';
+
     try {
         for (let i = 0; i < count; i++) {
-            await pool.query('INSERT INTO activation_keys (activation_key, expires_at, notes) VALUES ($1, $2, $3)', [uuidv4(), expires_at, notes]);
+            // Thêm is_trial_key vào câu lệnh INSERT
+            await pool.query(
+                'INSERT INTO activation_keys (activation_key, expires_at, notes, is_trial_key) VALUES ($1, $2, $3, $4)', 
+                [uuidv4(), expires_at, notes, is_trial_key]
+            );
         }
         res.json({ success: true, message: 'Tạo key thành công' });
     } catch (err) {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
+    // ▲▲▲ THAY ĐỔI KẾT THÚC TẠI ĐÂY ▲▲▲
 });
+
 
 app.post('/api/keys/:id/delete', async (req, res) => {
     try {

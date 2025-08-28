@@ -32,9 +32,15 @@
                         <label for="notes">Ghi chú (tùy chọn):</label>
                         <input type="text" id="notes" name="notes" placeholder="VD: Key cho sự kiện X, tặng khách hàng Y...">
                     </div>
+                    
+                    <div class="form-group form-group-full" style="flex-direction: row; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="is_trial_key" name="is_trial_key" style="width: auto;">
+                        <label for="is_trial_key" style="margin-bottom: 0;">Tạo key dùng thử (cho phép nhiều người cùng sử dụng)</label>
+                    </div>
+                    
                     <button type="submit" class="btn btn-primary form-group-full">Tạo Key</button>
                 </form>
-            </div>
+                 </div>
 
             <div class="card">
                 <h2>Lọc và Tìm Kiếm</h2>
@@ -54,7 +60,7 @@
                         <label for="search-input">Tìm kiếm (Key/FP):</label>
                         <input type="search" id="search-input" placeholder="Nhập từ khóa...">
                     </div>
-                     <div class="form-group form-group-full">
+                    <div class="form-group form-group-full">
                         <label for="filter-notes">Lọc theo Ghi chú:</label>
                         <input type="search" id="filter-notes" placeholder="Nhập nội dung ghi chú...">
                     </div>

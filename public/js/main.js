@@ -33,7 +33,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'new_device_kick_old': 'Kích hoạt máy mới (đá máy cũ)', 'denied_invalid_key': 'Từ chối: Key không hợp lệ',
         'denied_locked': 'Từ chối: Key đã bị khóa', 'denied_expired': 'Từ chối: Key đã hết hạn',
         'denied_kicked_out': 'Từ chối: Bị đá khỏi phiên', 'denied_locked_on_heartbeat': 'Từ chối: Key bị khóa từ xa',
-        'force_lock_too_many_devices': 'Cưỡng chế khóa: Đổi máy quá nhiều'
+        'force_lock_too_many_devices': 'Cưỡng chế khóa: Đổi máy quá nhiều',
+        'trial_activation': 'Kích hoạt dùng thử'
     };
 
     const fetchData = async () => {
