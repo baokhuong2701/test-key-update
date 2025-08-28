@@ -83,7 +83,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (key.is_locked) {
                     status = { text: 'Bị khóa', class: 'status-locked' };
                 } else if (key.is_activated) {
-                    status = { text: 'Đã dùng', class: 'status-used' };
+                    status = { text: 'Đang dùng', class: 'status-used' };
                 } else {
                     status = { text: 'Chưa dùng', class: 'status-ok' };
                 }
