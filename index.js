@@ -69,17 +69,7 @@ app.post('/api/v2/activate', async (req, res) => {
             return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
         
-        // ▼▼▼ CẬP NHẬT LOGIC KEY DÙNG THỬ ▼▼▼
-        if (key.is_trial_key) {
-            // Tăng số lượt kích hoạt cho key dùng thử
-            await pool.query('UPDATE activation_keys SET activation_count = activation_count + 1 WHERE id = $1', [key.id]);
-            
-            const trialSessionToken = crypto.randomBytes(32).toString('hex');
-            await logAction(key.id, 'trial_activation', ip, fingerprint, programName, 'Trial key used');
-            return res.json({ status: 'ok', session_token: trialSessionToken, message: 'Chào mừng bạn đến với phiên bản dùng thử!' });
-        }
-        // ▲▲▲ KẾT THÚC CẬP NHẬT ▲▲▲
-
+        // Các kiểm tra này giờ sẽ áp dụng cho TẤT CẢ các loại key.
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked', ip, fingerprint, programName);
             return res.status(403).json({ status: 'error', message: 'Key đã bị khóa' });
@@ -88,7 +78,16 @@ app.post('/api/v2/activate', async (req, res) => {
             await logAction(key.id, 'denied_expired', ip, fingerprint, programName);
             return res.status(410).json({ status: 'error', message: 'Key đã hết hạn' });
         }
+        
+        // Nếu là key dùng thử (đã vượt qua kiểm tra ở trên), cấp quyền và bỏ qua kiểm tra thiết bị
+        if (key.is_trial_key) {
+            await pool.query('UPDATE activation_keys SET activation_count = activation_count + 1 WHERE id = $1', [key.id]);
+            const trialSessionToken = crypto.randomBytes(32).toString('hex');
+            await logAction(key.id, 'trial_activation', ip, fingerprint, programName, 'Trial key used');
+            return res.json({ status: 'ok', session_token: trialSessionToken, message: 'Chào mừng bạn đến với phiên bản dùng thử!' });
+        }
 
+        // Logic còn lại chỉ dành cho key thông thường
         const newSessionToken = crypto.randomBytes(32).toString('hex');
         const newActivationCount = key.activation_count + 1;
         
@@ -150,15 +149,18 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
         if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
         
-        if (key.is_trial_key) {
-            return res.json({ status: 'ok' });
-        }
-
+        // Luôn kiểm tra khóa trước
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
             return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
         }
 
+        // Nếu là key dùng thử (và không bị khóa), cho phép heartbeat
+        if (key.is_trial_key) {
+            return res.json({ status: 'ok' });
+        }
+
+        // Logic cho key thường
         if (key.current_session_token && key.current_session_token === session_token) {
             await pool.query('UPDATE activation_keys SET last_heartbeat = NOW() WHERE id = $1', [key.id]);
             return res.json({ status: 'ok' });

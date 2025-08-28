@@ -64,33 +64,46 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         keys.forEach(key => {
-            let status = { text: 'Chưa dùng', class: 'status-ok' };
-            if (key.is_trial_key) status = { text: 'Dùng thử', class: 'status-info' };
-            else {
-                const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
-                if (key.force_lock_reason) status = { text: 'Bị Cưỡng Chế', class: 'status-forced' };
-                else if (isExpired) status = { text: 'Hết hạn', class: 'status-expired' };
-                else if (key.is_locked) status = { text: 'Bị khóa', class: 'status-locked' };
-                else if (key.is_activated) status = { text: 'Đã dùng', class: 'status-used' };
+            let status;
+            const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
+
+            if (key.is_trial_key) {
+                if (key.is_locked) {
+                    status = { text: 'Dùng Thử - Khóa', class: 'status-trial-locked' };
+                } else if (isExpired) {
+                    status = { text: 'Dùng Thử - Hết Hạn', class: 'status-trial-expired' };
+                } else {
+                    status = { text: 'Dùng thử', class: 'status-info' };
+                }
+            } else {
+                if (key.force_lock_reason) {
+                    status = { text: 'Bị Cưỡng Chế', class: 'status-forced' };
+                } else if (isExpired) {
+                    status = { text: 'Hết hạn', class: 'status-expired' };
+                } else if (key.is_locked) {
+                    status = { text: 'Bị khóa', class: 'status-locked' };
+                } else if (key.is_activated) {
+                    status = { text: 'Đã dùng', class: 'status-used' };
+                } else {
+                    status = { text: 'Chưa dùng', class: 'status-ok' };
+                }
             }
             
             const row = document.createElement('tr');
             row.dataset.keyId = key.id;
 
-            // ▼▼▼ CẬP NHẬT LOGIC HIỂN THỊ NÚT HÀNH ĐỘNG ▼▼▼
             let actionButtonsHTML = `
                 <button class="btn btn-action btn-history" data-action="history">Log</button>
                 <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
                 <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
             `;
-            // Nếu key có ngày hết hạn và không phải là key dùng thử, thêm các nút chức năng
+            
             if (key.expires_at && !key.is_trial_key) {
                 actionButtonsHTML += `
                     <button class="btn btn-action btn-info" data-action="extend" title="Gia hạn thêm ngày sử dụng">Gia hạn</button>
                     <button class="btn btn-action btn-success" data-action="make-permanent" title="Chuyển key thành vĩnh viễn">Vĩnh viễn</button>
                 `;
             }
-            // ▲▲▲ KẾT THÚC CẬP NHẬT LOGIC NÚT ▲▲▲
 
             row.innerHTML = `
                 <td><input type="checkbox" class="key-checkbox" data-key-id="${key.id}"></td>
@@ -186,16 +199,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         } 
-        // ▼▼▼ THÊM LOGIC XỬ LÝ CHO NÚT GIA HẠN ▼▼▼
         else if (action === 'extend') {
             const days = prompt('Bạn muốn gia hạn key thêm bao nhiêu ngày?', '30');
-            if (days === null) return; // Người dùng nhấn Cancel
+            if (days === null) return; 
             
             const daysToAdd = parseInt(days);
             if (isNaN(daysToAdd) || daysToAdd <= 0) {
                 return alert('Vui lòng nhập một số ngày hợp lệ (lớn hơn 0).');
             }
-
             try {
                 const response = await fetch(`/api/keys/${keyId}/extend`, {
                     method: 'POST',
@@ -211,10 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 alert('Lỗi khi gửi yêu cầu gia hạn.');
             }
         }
-        // ▲▲▲ KẾT THÚC LOGIC XỬ LÝ ▲▲▲
     });
-
-    // ... Các hàm còn lại giữ nguyên không thay đổi ...
 
     const updateBulkActionBar = () => {
         const selectedCheckboxes = document.querySelectorAll('.key-checkbox:checked');

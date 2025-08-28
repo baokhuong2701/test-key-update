@@ -32,6 +32,8 @@ input, select, textarea { width: 100%; padding: 0.5rem 0.75rem; border: 1px soli
 .bulk-action-bar { display: none; align-items: center; gap: 1rem; padding: 1rem; background-color: var(--light-color); border: 1px solid var(--border-color); border-radius: var(--border-radius); margin-bottom: 1.5rem; }
 .bulk-action-bar span { font-weight: 500; }
 .status-info { background-color: var(--info-color);}
+.status-trial-locked {background-color: var(--warning-color);color: var(--text-color); /* Chữ màu tối trên nền vàng cho dễ đọc */}
+.status-trial-expired {background-color: var(--danger-color);}
 .table-container { background-color: var(--card-bg); border-radius: var(--border-radius); box-shadow: var(--box-shadow); overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--border-color); vertical-align: middle; }
