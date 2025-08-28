@@ -47,7 +47,6 @@ const basicAuth = (req, res, next) => {
 };
 
 // --- ENDPOINT CÔNG KHAI CHO UPTIMEROBOT ---
-// Endpoint này không có bảo mật, chỉ để kiểm tra xem server có "sống" không.
 app.get('/healthcheck', (req, res) => {
     res.status(200).send('OK');
 });
@@ -70,16 +69,11 @@ app.post('/api/v2/activate', async (req, res) => {
             return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
         
-        // ▼▼▼ THAY ĐỔI BẮT ĐẦU TẠI ĐÂY ▼▼▼
-        // Xử lý đặc biệt cho key dùng thử
         if (key.is_trial_key) {
             const trialSessionToken = crypto.randomBytes(32).toString('hex');
-            // Ghi log rằng có một lượt kích hoạt dùng thử, nhưng không thay đổi trạng thái của key
             await logAction(key.id, 'trial_activation', ip, fingerprint, programName, 'Trial key used');
-            // Luôn trả về thành công cho key dùng thử
             return res.json({ status: 'ok', session_token: trialSessionToken, message: 'Chào mừng bạn đến với phiên bản dùng thử!' });
         }
-        // ▲▲▲ THAY ĐỔI KẾT THÚC TẠI ĐÂY ▲▲▲
 
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked', ip, fingerprint, programName);
@@ -186,7 +180,6 @@ app.get('/logout', (req, res) => {
     res.status(401).send('Bạn đã đăng xuất. Vui lòng đóng tab này.');
 });
 
-// Áp dụng bảo mật cho TẤT CẢ các route được định nghĩa BÊN DƯỚI dòng này
 app.use('/', basicAuth);
 
 app.get('/', (req, res) => res.render('index'));
@@ -194,7 +187,7 @@ app.get('/', (req, res) => res.render('index'));
 app.get('/api/keys', async (req, res) => {
     const { status, search, notes, sortBy, sortDir } = req.query;
     
-    const validSortColumns = ['id', 'created_at', 'activation_key', 'is_activated', 'is_locked', 'expires_at', 'activation_count', 'last_heartbeat', 'notes', 'device_change_count'];
+    const validSortColumns = ['id', 'created_at', 'activation_key', 'is_activated', 'is_locked', 'expires_at', 'activation_count', 'last_heartbeat', 'notes', 'device_change_count', 'is_trial_key'];
     const safeSortBy = validSortColumns.includes(sortBy) ? sortBy : 'id';
     const safeSortDir = ['ASC', 'DESC'].includes(sortDir?.toUpperCase()) ? sortDir.toUpperCase() : 'DESC';
 
@@ -259,16 +252,13 @@ app.get('/api/keys/:id/logs', async (req, res) => {
 });
 
 app.post('/api/keys', async (req, res) => {
-    // ▼▼▼ THAY ĐỔI BẮT ĐẦU TẠI ĐÂY ▼▼▼
     const count = parseInt(req.body.count) || 1;
     const expires_at = req.body.expires_at || null;
     const notes = req.body.notes || null;
-    // Checkbox gửi về giá trị 'on' khi được tick, ngược lại thì là 'undefined'
     const is_trial_key = req.body.is_trial_key === 'on';
 
     try {
         for (let i = 0; i < count; i++) {
-            // Thêm is_trial_key vào câu lệnh INSERT
             await pool.query(
                 'INSERT INTO activation_keys (activation_key, expires_at, notes, is_trial_key) VALUES ($1, $2, $3, $4)', 
                 [uuidv4(), expires_at, notes, is_trial_key]
@@ -278,9 +268,7 @@ app.post('/api/keys', async (req, res) => {
     } catch (err) {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
-    // ▲▲▲ THAY ĐỔI KẾT THÚC TẠI ĐÂY ▲▲▲
 });
-
 
 app.post('/api/keys/:id/delete', async (req, res) => {
     try {
@@ -299,6 +287,18 @@ app.post('/api/keys/:id/toggle-lock', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
+
+// ▼▼▼ THÊM API ENDPOINT MỚI ▼▼▼
+app.post('/api/keys/:id/make-permanent', async (req, res) => {
+    try {
+        await pool.query('UPDATE activation_keys SET expires_at = NULL WHERE id = $1', [req.params.id]);
+        res.json({ success: true, message: 'Key đã được cập nhật thành vĩnh viễn.' });
+    } catch (err) {
+        console.error('Lỗi khi cập nhật key thành vĩnh viễn:', err.message);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
+    }
+});
+// ▲▲▲ KẾT THÚC THÊM API ENDPOINT MỚI ▲▲▲
 
 app.post('/api/keys/bulk-action', async (req, res) => {
     const { action, keyIds, password } = req.body;

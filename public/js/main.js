@@ -53,31 +53,48 @@ document.addEventListener('DOMContentLoaded', () => {
             updateBulkActionBar();
         } catch (error) {
             console.error('Lỗi tải dữ liệu:', error);
-            keyTableBody.innerHTML = `<tr><td colspan="9" class="error-text">Không thể tải dữ liệu.</td></tr>`;
+            keyTableBody.innerHTML = `<tr><td colspan="10" class="error-text">Không thể tải dữ liệu.</td></tr>`;
         }
     };
 
     const renderTable = (keys) => {
         keyTableBody.innerHTML = '';
         if (!keys || keys.length === 0) {
-            keyTableBody.innerHTML = `<tr><td colspan="9" class="loading-text">Không tìm thấy key nào.</td></tr>`;
+            keyTableBody.innerHTML = `<tr><td colspan="10" class="loading-text">Không tìm thấy key nào.</td></tr>`;
             return;
         }
         keys.forEach(key => {
             let status = { text: 'Chưa dùng', class: 'status-ok' };
-            const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
-            if (key.force_lock_reason) status = { text: 'Bị Cưỡng Chế', class: 'status-forced' };
-            else if (isExpired) status = { text: 'Hết hạn', class: 'status-expired' };
-            else if (key.is_locked) status = { text: 'Bị khóa', class: 'status-locked' };
-            else if (key.is_activated) status = { text: 'Đã dùng', class: 'status-used' };
-
+            if (key.is_trial_key) status = { text: 'Dùng thử', class: 'status-info' };
+            else {
+                const isExpired = key.expires_at && new Date(key.expires_at) < new Date();
+                if (key.force_lock_reason) status = { text: 'Bị Cưỡng Chế', class: 'status-forced' };
+                else if (isExpired) status = { text: 'Hết hạn', class: 'status-expired' };
+                else if (key.is_locked) status = { text: 'Bị khóa', class: 'status-locked' };
+                else if (key.is_activated) status = { text: 'Đã dùng', class: 'status-used' };
+            }
+            
             const row = document.createElement('tr');
             row.dataset.keyId = key.id;
+
+            // ▼▼▼ THÊM NÚT "VĨNH VIỄN" NẾU CÓ HẠN DÙNG ▼▼▼
+            let actionButtonsHTML = `
+                <button class="btn btn-action btn-history" data-action="history">Log</button>
+                <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
+                <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
+            `;
+            // Nếu key có ngày hết hạn và không phải là key dùng thử, thêm nút "Vĩnh viễn"
+            if (key.expires_at && !key.is_trial_key) {
+                actionButtonsHTML += `<button class="btn btn-action btn-success" data-action="make-permanent" title="Chuyển key thành vĩnh viễn">Vĩnh viễn</button>`;
+            }
+            // ▲▲▲ KẾT THÚC THÊM NÚT ▲▲▲
+
             row.innerHTML = `
                 <td><input type="checkbox" class="key-checkbox" data-key-id="${key.id}"></td>
                 <td>${new Date(key.created_at).toLocaleString('vi-VN')}</td>
                 <td class="key-value">${key.activation_key}</td>
                 <td><span class="status-badge ${status.class}" title="${key.force_lock_reason || ''}">${status.text}</span></td>
+                <td>${key.expires_at ? new Date(key.expires_at).toLocaleDateString('vi-VN') : 'Vĩnh viễn'}</td>
                 <td class="notes" title="${key.notes || ''}">${key.notes || '---'}</td>
                 <td class="key-value" title="${key.metadata?.fingerprint || ''}">
                     ${(key.metadata?.fingerprint || '---').substring(0, 15)}
@@ -86,9 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <td>${key.activation_count}</td>
                 <td>${key.last_heartbeat ? new Date(key.last_heartbeat).toLocaleString('vi-VN') : '---'}</td>
                 <td class="actions">
-                    <button class="btn btn-action btn-history" data-action="history">Log</button>
-                    <button class="btn btn-action ${key.is_locked ? 'btn-unlock' : 'btn-lock'}" data-action="toggle-lock">${key.is_locked ? 'Mở' : 'Khóa'}</button>
-                    <button class="btn btn-action btn-delete" data-action="delete">Xóa</button>
+                    ${actionButtonsHTML}
                 </td>
             `;
             keyTableBody.appendChild(row);
@@ -146,6 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = target.closest('tr');
         const keyId = row.dataset.keyId;
         const action = target.dataset.action;
+
         if (action === 'toggle-lock') {
             const response = await fetch(`/api/keys/${keyId}/toggle-lock`, { method: 'POST' });
             if (response.ok) fetchData();
@@ -156,7 +172,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else if (action === 'history') {
             showHistoryModal(keyId);
+        } 
+        // ▼▼▼ THÊM LOGIC XỬ LÝ CHO NÚT MỚI ▼▼▼
+        else if (action === 'make-permanent') {
+            if (confirm(`Bạn có chắc muốn đổi key này thành VĨNH VIỄN không? Hành động này không thể hoàn tác.`)) {
+                const response = await fetch(`/api/keys/${keyId}/make-permanent`, { method: 'POST' });
+                if (response.ok) {
+                    alert('Đã cập nhật key thành vĩnh viễn thành công!');
+                    fetchData(); // Tải lại bảng để cập nhật giao diện
+                } else {
+                    alert('Có lỗi xảy ra, không thể cập nhật key.');
+                }
+            }
         }
+        // ▲▲▲ KẾT THÚC LOGIC XỬ LÝ ▲▲▲
     });
 
     const updateBulkActionBar = () => {
@@ -172,6 +201,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.querySelectorAll('.key-checkbox').forEach(cb => cb.checked = selectAllCheckbox.checked);
         updateBulkActionBar();
     });
+
+
 
     keyTableBody.addEventListener('change', (e) => {
         if (e.target.classList.contains('key-checkbox')) updateBulkActionBar();
