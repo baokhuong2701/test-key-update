@@ -69,7 +69,6 @@ app.post('/api/v2/activate', async (req, res) => {
             return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
         
-        // Các kiểm tra này giờ sẽ áp dụng cho TẤT CẢ các loại key.
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked', ip, fingerprint, programName);
             return res.status(403).json({ status: 'error', message: 'Key đã bị khóa' });
@@ -79,8 +78,20 @@ app.post('/api/v2/activate', async (req, res) => {
             return res.status(410).json({ status: 'error', message: 'Key đã hết hạn' });
         }
         
-        // Nếu là key dùng thử (đã vượt qua kiểm tra ở trên), cấp quyền và bỏ qua kiểm tra thiết bị
         if (key.is_trial_key) {
+            // ▼▼▼ THÊM LOGIC CHẶN LẠM DỤNG KEY DÙNG THỬ ▼▼▼
+            const checkFingerprint = await pool.query('SELECT 1 FROM trial_fingerprints WHERE fingerprint = $1', [fingerprint]);
+            
+            if (checkFingerprint.rows.length > 0) {
+                // Nếu fingerprint đã tồn tại, từ chối kích hoạt
+                await logAction(key.id, 'denied_trial_abuse', ip, fingerprint, programName, 'Fingerprint already used a trial key');
+                return res.status(403).json({ status: 'error', message: 'Thiết bị của bạn đã sử dụng key dùng thử trước đó.' });
+            }
+
+            // Nếu fingerprint chưa tồn tại, cho phép kích hoạt và ghi lại
+            await pool.query('INSERT INTO trial_fingerprints (fingerprint, first_used_key_id) VALUES ($1, $2)', [fingerprint, key.id]);
+            // ▲▲▲ KẾT THÚC LOGIC CHẶN ▲▲▲
+
             await pool.query('UPDATE activation_keys SET activation_count = activation_count + 1 WHERE id = $1', [key.id]);
             const trialSessionToken = crypto.randomBytes(32).toString('hex');
             await logAction(key.id, 'trial_activation', ip, fingerprint, programName, 'Trial key used');
@@ -135,6 +146,7 @@ app.post('/api/v2/activate', async (req, res) => {
     }
 });
 
+// ... Phần còn lại của file index.js giữ nguyên không thay đổi ...
 app.post('/api/v2/heartbeat', async (req, res) => {
     const { activation_key, fingerprint, session_token, programName } = req.body;
     const ip = req.ip;
@@ -149,18 +161,15 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
         if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
         
-        // Luôn kiểm tra khóa trước
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
             return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
         }
 
-        // Nếu là key dùng thử (và không bị khóa), cho phép heartbeat
         if (key.is_trial_key) {
             return res.json({ status: 'ok' });
         }
 
-        // Logic cho key thường
         if (key.current_session_token && key.current_session_token === session_token) {
             await pool.query('UPDATE activation_keys SET last_heartbeat = NOW() WHERE id = $1', [key.id]);
             return res.json({ status: 'ok' });
@@ -173,7 +182,6 @@ app.post('/api/v2/heartbeat', async (req, res) => {
         return res.status(500).json({ status: 'error', message: 'Lỗi máy chủ nội bộ' });
     }
 });
-
 app.get('/api/v2/check-updates', async (req, res) => {
     try {
         const { rows } = await pool.query("SELECT message FROM notifications WHERE is_active = true ORDER BY created_at DESC LIMIT 1");
@@ -186,15 +194,11 @@ app.get('/api/v2/check-updates', async (req, res) => {
         res.status(500).json({ error: 'Lỗi máy chủ' });
     }
 });
-
 app.get('/logout', (req, res) => {
     res.status(401).send('Bạn đã đăng xuất. Vui lòng đóng tab này.');
 });
-
 app.use('/', basicAuth);
-
 app.get('/', (req, res) => res.render('index'));
-
 app.get('/api/keys', async (req, res) => {
     const { status, search, notes, sortBy, sortDir } = req.query;
     
@@ -234,12 +238,10 @@ app.get('/api/keys', async (req, res) => {
         res.status(500).json({ error: 'Lỗi khi truy vấn dữ liệu' });
     }
 });
-
 app.get('/api/notifications', async (req, res) => {
     const { rows } = await pool.query('SELECT * FROM notifications ORDER BY created_at DESC');
     res.json(rows);
 });
-
 app.post('/api/notifications', async (req, res) => {
     const { message } = req.body;
     if (!message) return res.status(400).json({ success: false, message: 'Nội dung không được để trống' });
@@ -247,12 +249,10 @@ app.post('/api/notifications', async (req, res) => {
     await pool.query('INSERT INTO notifications (message, is_active) VALUES ($1, true)', [message]);
     res.json({ success: true });
 });
-
 app.post('/api/notifications/:id/delete', async (req, res) => {
     await pool.query('DELETE FROM notifications WHERE id = $1', [req.params.id]);
     res.json({ success: true });
 });
-
 app.get('/api/keys/:id/logs', async (req, res) => {
     try {
         const { rows } = await pool.query('SELECT * FROM activation_logs WHERE key_id = $1 ORDER BY log_timestamp DESC LIMIT 50', [req.params.id]);
@@ -261,7 +261,6 @@ app.get('/api/keys/:id/logs', async (req, res) => {
         res.status(500).json({ error: 'Lỗi khi lấy lịch sử' });
     }
 });
-
 app.post('/api/keys', async (req, res) => {
     const count = parseInt(req.body.count) || 1;
     const expires_at = req.body.expires_at || null;
@@ -280,7 +279,6 @@ app.post('/api/keys', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
-
 app.post('/api/keys/:id/delete', async (req, res) => {
     try {
         await pool.query('DELETE FROM activation_keys WHERE id = $1', [req.params.id]);
@@ -289,7 +287,6 @@ app.post('/api/keys/:id/delete', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
-
 app.post('/api/keys/:id/toggle-lock', async (req, res) => {
     try {
         const result = await pool.query('UPDATE activation_keys SET is_locked = NOT is_locked, force_lock_reason = NULL WHERE id = $1 RETURNING is_locked', [req.params.id]);
@@ -298,7 +295,6 @@ app.post('/api/keys/:id/toggle-lock', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
-
 app.post('/api/keys/:id/make-permanent', async (req, res) => {
     try {
         await pool.query('UPDATE activation_keys SET expires_at = NULL WHERE id = $1', [req.params.id]);
@@ -308,7 +304,6 @@ app.post('/api/keys/:id/make-permanent', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
-
 app.post('/api/keys/:id/extend', async (req, res) => {
     const { days } = req.body;
     const keyId = req.params.id;
@@ -340,7 +335,6 @@ app.post('/api/keys/:id/extend', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
-
 app.post('/api/keys/bulk-action', async (req, res) => {
     const { action, keyIds, password } = req.body;
 
@@ -370,5 +364,4 @@ app.post('/api/keys/bulk-action', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi khi thực hiện hành động hàng loạt' });
     }
 });
-
 app.listen(PORT, () => console.log(`Server đang chạy tại http://localhost:${PORT}`));
