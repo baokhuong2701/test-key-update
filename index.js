@@ -145,6 +145,13 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
         if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
         
+        // ▼▼▼ SỬA LỖI VĂNG KEY DÙNG THỬ ▼▼▼
+        // Nếu là key dùng thử, luôn cho phép heartbeat thành công.
+        if (key.is_trial_key) {
+            return res.json({ status: 'ok' });
+        }
+        // ▲▲▲ KẾT THÚC SỬA LỖI ▲▲▲
+
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
             return res.status(403).json({ status: 'kicked_out', message: 'Key đã bị quản trị viên khóa từ xa.' });
@@ -288,13 +295,46 @@ app.post('/api/keys/:id/toggle-lock', async (req, res) => {
     }
 });
 
-// ▼▼▼ THÊM API ENDPOINT MỚI ▼▼▼
 app.post('/api/keys/:id/make-permanent', async (req, res) => {
     try {
         await pool.query('UPDATE activation_keys SET expires_at = NULL WHERE id = $1', [req.params.id]);
         res.json({ success: true, message: 'Key đã được cập nhật thành vĩnh viễn.' });
     } catch (err) {
         console.error('Lỗi khi cập nhật key thành vĩnh viễn:', err.message);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
+    }
+});
+
+// ▼▼▼ THÊM API ENDPOINT MỚI ĐỂ GIA HẠN ▼▼▼
+app.post('/api/keys/:id/extend', async (req, res) => {
+    const { days } = req.body;
+    const keyId = req.params.id;
+    const daysToAdd = parseInt(days);
+
+    if (!daysToAdd || daysToAdd <= 0) {
+        return res.status(400).json({ success: false, message: 'Số ngày gia hạn không hợp lệ.' });
+    }
+
+    try {
+        const result = await pool.query('SELECT expires_at FROM activation_keys WHERE id = $1', [keyId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Không tìm thấy key.' });
+        }
+
+        const currentExpiresAt = result.rows[0].expires_at;
+        if (currentExpiresAt === null) {
+            return res.status(400).json({ success: false, message: 'Không thể gia hạn key vĩnh viễn.' });
+        }
+
+        // Nếu key đã hết hạn, gia hạn từ ngày hôm nay. Nếu chưa, gia hạn từ ngày hết hạn cũ.
+        const baseDate = new Date(currentExpiresAt) < new Date() ? new Date() : new Date(currentExpiresAt);
+        baseDate.setDate(baseDate.getDate() + daysToAdd);
+
+        await pool.query('UPDATE activation_keys SET expires_at = $1 WHERE id = $2', [baseDate.toISOString(), keyId]);
+        res.json({ success: true, message: `Gia hạn key thành công thêm ${daysToAdd} ngày.` });
+
+    } catch (err) {
+        console.error('Lỗi khi gia hạn key:', err.message);
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
