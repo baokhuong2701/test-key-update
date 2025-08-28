@@ -69,11 +69,16 @@ app.post('/api/v2/activate', async (req, res) => {
             return res.status(404).json({ status: 'error', message: 'Key không hợp lệ' });
         }
         
+        // ▼▼▼ CẬP NHẬT LOGIC KEY DÙNG THỬ ▼▼▼
         if (key.is_trial_key) {
+            // Tăng số lượt kích hoạt cho key dùng thử
+            await pool.query('UPDATE activation_keys SET activation_count = activation_count + 1 WHERE id = $1', [key.id]);
+            
             const trialSessionToken = crypto.randomBytes(32).toString('hex');
             await logAction(key.id, 'trial_activation', ip, fingerprint, programName, 'Trial key used');
             return res.json({ status: 'ok', session_token: trialSessionToken, message: 'Chào mừng bạn đến với phiên bản dùng thử!' });
         }
+        // ▲▲▲ KẾT THÚC CẬP NHẬT ▲▲▲
 
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked', ip, fingerprint, programName);
@@ -145,12 +150,9 @@ app.post('/api/v2/heartbeat', async (req, res) => {
 
         if (!key) return res.status(404).json({ status: 'error', message: 'Key không tồn tại' });
         
-        // ▼▼▼ SỬA LỖI VĂNG KEY DÙNG THỬ ▼▼▼
-        // Nếu là key dùng thử, luôn cho phép heartbeat thành công.
         if (key.is_trial_key) {
             return res.json({ status: 'ok' });
         }
-        // ▲▲▲ KẾT THÚC SỬA LỖI ▲▲▲
 
         if (key.is_locked) {
             await logAction(key.id, 'denied_locked_on_heartbeat', ip, fingerprint, programName);
@@ -305,7 +307,6 @@ app.post('/api/keys/:id/make-permanent', async (req, res) => {
     }
 });
 
-// ▼▼▼ THÊM API ENDPOINT MỚI ĐỂ GIA HẠN ▼▼▼
 app.post('/api/keys/:id/extend', async (req, res) => {
     const { days } = req.body;
     const keyId = req.params.id;
@@ -325,8 +326,7 @@ app.post('/api/keys/:id/extend', async (req, res) => {
         if (currentExpiresAt === null) {
             return res.status(400).json({ success: false, message: 'Không thể gia hạn key vĩnh viễn.' });
         }
-
-        // Nếu key đã hết hạn, gia hạn từ ngày hôm nay. Nếu chưa, gia hạn từ ngày hết hạn cũ.
+        
         const baseDate = new Date(currentExpiresAt) < new Date() ? new Date() : new Date(currentExpiresAt);
         baseDate.setDate(baseDate.getDate() + daysToAdd);
 
@@ -338,7 +338,6 @@ app.post('/api/keys/:id/extend', async (req, res) => {
         res.status(500).json({ success: false, message: 'Lỗi máy chủ' });
     }
 });
-// ▲▲▲ KẾT THÚC THÊM API ENDPOINT MỚI ▲▲▲
 
 app.post('/api/keys/bulk-action', async (req, res) => {
     const { action, keyIds, password } = req.body;
